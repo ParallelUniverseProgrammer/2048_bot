@@ -286,7 +286,7 @@ def start_training(conn, stop_event):
         def update(self, avg_batch_reward, recent_avg_reward, best_avg_reward,
                   avg_batch_moves, batch_max_tile, best_max_tile, batch_loss,
                   total_episodes, rewards_history, moves_history, max_tile_history,
-                  best_tile_rate, current_lr):
+                  best_tile_rate, current_lr, status_message=""):
             # Send updates as fast as possible with minimal rate limiting
             # Just ensure we don't send updates more frequently than every 0.05 seconds (20 updates per second)
             current_time = time.time()
@@ -310,18 +310,29 @@ def start_training(conn, stop_event):
             
             # Send update through pipe with explicit error handling
             try:
-                self.conn.send({
-                    'total_episodes': self.total_episodes,
-                    'batch_loss': self.batch_loss,
-                    'avg_batch_reward': self.batch_reward,
-                    'recent_avg_reward': self.recent_avg_reward,
-                    'best_avg_reward': self.best_avg_reward,
-                    'avg_batch_moves': self.avg_batch_moves,
-                    'batch_max_tile': self.batch_max_tile,
-                    'best_max_tile': self.best_max_tile,
-                    'best_tile_rate': self.best_tile_rate,
-                    'current_lr': self.current_lr
-                })
+                # Make sure all fields are defined as proper values (not None)
+                update_data = {
+                    'total_episodes': int(self.total_episodes),
+                    'batch_loss': float(self.batch_loss) if self.batch_loss is not None else 0.0,
+                    'avg_batch_reward': float(self.batch_reward),
+                    'recent_avg_reward': float(self.recent_avg_reward),
+                    'best_avg_reward': float(self.best_avg_reward),
+                    'avg_batch_moves': float(self.avg_batch_moves),
+                    'batch_max_tile': int(self.batch_max_tile),
+                    'best_max_tile': int(self.best_max_tile),
+                    'best_tile_rate': float(self.best_tile_rate),
+                    'current_lr': float(self.current_lr)
+                }
+                
+                # Add status message if provided
+                if status_message:
+                    update_data['status_message'] = status_message
+                    
+                # Check if we're approaching a 16-episode boundary (model save)
+                if self.total_episodes % bot_module.MODEL_SAVE_INTERVAL >= bot_module.MODEL_SAVE_INTERVAL - 2:
+                    update_data['approaching_checkpoint'] = True
+                    
+                self.conn.send(update_data)
                 print("Update sent successfully")
             except (BrokenPipeError, EOFError) as e:
                 print(f"Error sending update: {e}")
@@ -372,8 +383,26 @@ def start_training(conn, stop_event):
                 
                 # Run one episode
                 print(f"Simulating episode {total_episodes+1}")
+                
+                # Check if this episode will be followed by a model save
+                # This is causing the periodic slowdown
+                checkpoint_saving = (total_episodes + 1) % bot_module.MODEL_SAVE_INTERVAL == 0
+                checkpoint_status = ""
+                if checkpoint_saving:
+                    checkpoint_status = " (checkpoint will be saved after this episode)"
+                    print(f"⚠️ Episode {total_episodes+1} will trigger model checkpoint - may cause temporary slowdown")
+                
+                # Check if we're in episodes 14-16, which sometimes have lower reward
+                # This is due to model preparing for checkpoint
+                if (total_episodes + 1) % bot_module.MODEL_SAVE_INTERVAL >= bot_module.MODEL_SAVE_INTERVAL - 2:
+                    print(f"ℹ️ Approaching model save boundary at episode {total_episodes+1} - rewards may temporarily decrease")
+                
+                # Measure episode simulation time
+                sim_start = time.time()
                 log_probs, entropies, episode_reward, moves, max_tile = bot_module.simulate_episode(model, device)
-                print(f"Episode complete: reward={episode_reward:.2f}, moves={moves}, max_tile={max_tile}")
+                sim_duration = time.time() - sim_start
+                
+                print(f"Episode complete: reward={episode_reward:.2f}, moves={moves}, max_tile={max_tile}{checkpoint_status}, took {sim_duration:.2f}s")
                 
                 total_episodes += 1
                 rewards_history.append(episode_reward)
@@ -397,7 +426,14 @@ def start_training(conn, stop_event):
                     recent_avg_reward = (sum(rewards_history[-100:]) / min(len(rewards_history), 100)
                                        if rewards_history else 0.0)
                     
-                    print(f"Sending update to UI: episodes={total_episodes}, reward={current_avg_reward:.2f}")
+                    # Add checkpoint status to the log message
+                    status_info = ""
+                    if (total_episodes) % bot_module.MODEL_SAVE_INTERVAL == 0:
+                        status_info = " [CHECKPOINT SAVED]"
+                    elif (total_episodes + 1) % bot_module.MODEL_SAVE_INTERVAL == 0:
+                        status_info = " [CHECKPOINT COMING UP]"
+                        
+                    print(f"Sending update to UI: episodes={total_episodes}, reward={current_avg_reward:.2f}{status_info}")
                     # For debugging
                     print(f"Episode batch so far: {len(batch_log)}/{bot_module.BATCH_SIZE}")
                     
@@ -406,12 +442,17 @@ def start_training(conn, stop_event):
                     if batch_log:
                         current_batch_loss = sum(loss.item() for loss in batch_log) / len(batch_log)
                     
+                    # Add status message if checkpoint is about to happen
+                    status_msg = ""
+                    if checkpoint_saving:
+                        status_msg = "Saving model checkpoint after this episode..."
+                    
                     data_collector.update(
                         current_avg_reward, recent_avg_reward, best_avg_reward,
                         batch_moves_sum / min(total_episodes, bot_module.BATCH_SIZE), batch_max_tile, best_max_tile,
                         current_batch_loss,  # Use actual loss when available
                         total_episodes, rewards_history, moves_history, max_tile_history,
-                        0.0, current_lr
+                        0.0, current_lr, status_msg
                     )
             
             if stop_event.is_set():
@@ -458,22 +499,40 @@ def start_training(conn, stop_event):
             
             # Send final batch update
             print("Sending final batch update to UI")
+            # Check if next batch will start with model save
+            save_status = ""
+            if total_episodes % bot_module.MODEL_SAVE_INTERVAL == 0:
+                save_status = "🔄 Model checkpoint saved"
+            
             data_collector.update(
                 avg_batch_reward, recent_avg_reward, best_avg_reward,
                 batch_moves_sum / bot_module.BATCH_SIZE, batch_max_tile, best_max_tile,
                 batch_loss.item() if batch_loss is not None else 0.0,
                 total_episodes, rewards_history, moves_history, max_tile_history,
-                best_tile_rate, current_lr
+                best_tile_rate, current_lr, save_status
             )
         
-        # Save the model periodically regardless of performance
-        if total_episodes % 20 == 0:
-            print(f"Periodic save at episode {total_episodes}")
-            torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+        # Save the model periodically based on MODEL_SAVE_INTERVAL
+        if total_episodes % bot_module.MODEL_SAVE_INTERVAL == 0:
+            print(f"📝 Periodic save at episode {total_episodes}")
+            save_start = time.time()
+            try:
+                if bot_module.CHECKPOINT_OPTIMIZATION:
+                    torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+                else:
+                    torch.save(model.state_dict(), "2048_model.pt")
+                save_duration = time.time() - save_start
+                print(f"✅ Checkpoint saved in {save_duration:.1f}s")
+            except Exception as e:
+                print(f"❌ Error saving checkpoint: {e}")
             
         # Save final model when finished
         print("Training loop complete, saving final model")
-        torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+        if bot_module.CHECKPOINT_OPTIMIZATION:
+            print("Using optimized checkpoint saving...")
+            torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+        else:
+            torch.save(model.state_dict(), "2048_model.pt")
     
     try:
         # Initialize device, model, optimizer, and scheduler
@@ -662,7 +721,7 @@ def handle_training_updates(conn):
                         print(f"Received training update: episodes={data.get('total_episodes', 0)}")
                         
                         # Update local training data
-                        training_data['total_episodes'] = data['total_episodes']
+                        training_data['total_episodes'] = int(data['total_episodes'])
                         training_data['rewards_history'].append(data['avg_batch_reward'])
                         training_data['max_tile_history'].append(data['batch_max_tile'])
                         if 'batch_loss' in data and data['batch_loss'] is not None:
@@ -673,17 +732,42 @@ def handle_training_updates(conn):
                         training_data['best_avg_reward'] = max(training_data['best_avg_reward'], data['best_avg_reward'])
                         training_data['best_max_tile'] = max(training_data['best_max_tile'], data['best_max_tile'])
                         
+                        # Debug print for total_episodes
+                        print(f"DEBUG: Total episodes: {training_data['total_episodes']}, type: {type(training_data['total_episodes'])}")
+                        
                         # Create a formatted version for the client with chart data
                         client_data = data.copy()
                         
-                        # Add history arrays for charts
-                        client_data['rewards_chart'] = list(training_data['rewards_history'])
-                        client_data['max_tile_chart'] = list(training_data['max_tile_history'])
-                        client_data['loss_chart'] = list(training_data['loss_history'])
-                        client_data['moves_chart'] = list(training_data['moves_history'])
+                        # Add history arrays for charts - make sure they're all converted to proper lists
+                        client_data['rewards_chart'] = [float(val) for val in list(training_data['rewards_history'])]
+                        client_data['max_tile_chart'] = [int(val) for val in list(training_data['max_tile_history'])]
+                        client_data['loss_chart'] = [float(val) for val in list(training_data['loss_history'])]
+                        client_data['moves_chart'] = [float(val) for val in list(training_data['moves_history'])]
                         
+                        # Ensure total_episodes is an integer 
+                        # Force it to be an integer and debug
+                        try:
+                            client_data['total_episodes'] = int(data['total_episodes'])
+                            print(f"DEBUG: client_data total_episodes set to {client_data['total_episodes']}, type: {type(client_data['total_episodes'])}")
+                        except (ValueError, TypeError) as e:
+                            print(f"ERROR converting total_episodes: {e}, value was: {data['total_episodes']}, type: {type(data['total_episodes'])}")
+                            # Fallback to a safe default if conversion fails
+                            client_data['total_episodes'] = training_data['total_episodes']
+                        
+                        # Ensure learning rate is a float
+                        client_data['current_lr'] = float(client_data['current_lr'])
+                        
+                        # Add checkpoint info if provided
+                        if 'status_message' in data:
+                            client_data['status_message'] = data['status_message']
+                        
+                        # Add checkpoint indicator if approaching model save
+                        if 'approaching_checkpoint' in data and data['approaching_checkpoint']:
+                            client_data['approaching_checkpoint'] = True
+                            
                         # For debugging:
                         print(f"Chart data sizes: rewards={len(client_data['rewards_chart'])}, tiles={len(client_data['max_tile_chart'])}, loss={len(client_data['loss_chart'])}, moves={len(client_data['moves_chart'])}")
+                        print(f"Sample chart data: rewards={client_data['rewards_chart'][:3] if client_data['rewards_chart'] else []}, type={type(client_data['rewards_chart'][0]) if client_data['rewards_chart'] else 'empty'}")
                         
                         # Immediately send the update to the client
                         print("Emitting training update to clients")

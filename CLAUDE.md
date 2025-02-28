@@ -8,7 +8,14 @@
 - Run in legacy console mode: `python 2048_bot.py --console`
 - Web server only: `python 2048_bot_server.py`
 - Monitor and train with hardware stats: `python 2048_bot.py --mode train --monitor`
+- Debug specific component: `python 2048_bot.py --debug [component_name]`
 - Install dependencies: `pip install -r requirements.txt`
+
+## Development Commands
+- Run unit tests: `python -m unittest discover`
+- Run specific test: `python -m unittest tests/test_file.py::TestClass::test_method`
+- Check code quality: `flake8 --max-line-length=100 *.py`
+- Export model: `python 2048_bot.py --mode export --output model.pt`
 
 ## Dependencies
 Core dependencies: torch>=1.9.0, flask>=2.0.0, flask-socketio>=5.1.0, numpy>=1.19.0
@@ -18,9 +25,9 @@ Monitoring tools: gputil>=1.4.0, psutil>=5.8.0, matplotlib>=3.4.0, pandas>=1.3.0
 - **Imports**: Group standard library, third-party, local imports with blank lines between groups
 - **Formatting**: 4-space indentation; 100 char line length; blank line between logical sections
 - **Naming**: snake_case for variables/functions, PascalCase for classes, UPPERCASE for constants
-- **Documentation**: Docstrings for all functions, classes, and modules
+- **Documentation**: Docstrings for all functions, classes, and modules (Google style)
 - **Type Hints**: Not used in the codebase (stick to this convention)
-- **Error Handling**: Use try/except blocks for expected exceptions
+- **Error Handling**: Use try/except blocks for expected exceptions; log errors appropriately
 - **Constants**: Define constants at the top of files in UPPERCASE
 - **Threading**: Use daemon threads with stop events for graceful shutdown
 - **Architecture**: Hybrid CNN-Transformer model using REINFORCE algorithm with batch training

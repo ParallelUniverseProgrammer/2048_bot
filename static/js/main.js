@@ -4,7 +4,6 @@ const socket = io();
 // DOM Elements
 const trainingButton = document.getElementById('start-training');
 const watchButton = document.getElementById('start-watch');
-const stopButton = document.getElementById('stop-process');
 const trainingPanel = document.getElementById('training-panel');
 const watchPanel = document.getElementById('watch-panel');
 const gameBoard = document.getElementById('game-board');
@@ -26,6 +25,7 @@ const gpuInfo = document.getElementById('gpu-info');
 // State variables
 let currentMode = null;
 let charts = {};
+let lastCheckpointTime = 0;
 
 // Initialize Charts
 function initCharts() {
@@ -42,6 +42,11 @@ function initCharts() {
                     color: 'rgba(255, 255, 255, 0.1)'
                 },
                 ticks: {
+                    color: 'rgba(255, 255, 255, 0.7)'
+                },
+                title: {
+                    display: true,
+                    text: 'Episode',
                     color: 'rgba(255, 255, 255, 0.7)'
                 }
             },
@@ -275,21 +280,6 @@ function updateHardwareInfo(data) {
 
 // Button event handlers
 trainingButton.addEventListener('click', function() {
-    // Don't allow if a process is currently stopping
-    if (stopButton.textContent === "Stopping...") {
-        const notification = document.createElement('div');
-        notification.className = 'notification';
-        notification.style.backgroundColor = "#cf6679"; // Error color
-        notification.textContent = 'Please wait for the current process to stop completely';
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.opacity = '0';
-            setTimeout(() => notification.remove(), 500);
-        }, 3000);
-        return;
-    }
-    
     // If we're already in training mode, do nothing
     if (currentMode === 'train') {
         return;
@@ -299,17 +289,6 @@ trainingButton.addEventListener('click', function() {
     if (currentMode === 'watch') {
         // Stop current visualization
         socket.emit('stop');
-        
-        // Show stopping/switching notification
-        const notification = document.createElement('div');
-        notification.className = 'notification';
-        notification.textContent = 'Stopping game and starting training...';
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.opacity = '0';
-            setTimeout(() => notification.remove(), 500);
-        }, 2000);
         
         // Wait briefly for the process to stop completely
         setTimeout(() => {
@@ -326,7 +305,6 @@ trainingButton.addEventListener('click', function() {
             // Keep buttons disabled as process is running
             trainingButton.disabled = true;
             watchButton.disabled = true;
-            stopButton.disabled = false;
             
             // Update button states
             updateButtonStates();
@@ -346,43 +324,16 @@ trainingButton.addEventListener('click', function() {
     
     trainingButton.disabled = true;
     watchButton.disabled = true;
-    stopButton.disabled = false;
     
     // Update button states
     updateButtonStates();
 });
 
 watchButton.addEventListener('click', function() {
-    // Don't allow if a process is currently stopping
-    if (stopButton.textContent === "Stopping...") {
-        const notification = document.createElement('div');
-        notification.className = 'notification';
-        notification.style.backgroundColor = "#cf6679"; // Error color
-        notification.textContent = 'Please wait for the current process to stop completely';
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.opacity = '0';
-            setTimeout(() => notification.remove(), 500);
-        }, 3000);
-        return;
-    }
-    
     // If we're already in watch mode, simply restart
     if (currentMode === 'watch') {
         // Stop current visualization
         socket.emit('stop');
-        
-        // Show stopping/restarting notification
-        const notification = document.createElement('div');
-        notification.className = 'notification';
-        notification.textContent = 'Restarting game...';
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.opacity = '0';
-            setTimeout(() => notification.remove(), 500);
-        }, 2000);
         
         // Wait briefly for the process to stop completely
         setTimeout(() => {
@@ -407,17 +358,6 @@ watchButton.addEventListener('click', function() {
         // Stop current training
         socket.emit('stop');
         
-        // Show stopping/switching notification
-        const notification = document.createElement('div');
-        notification.className = 'notification';
-        notification.textContent = 'Stopping training and starting game visualization...';
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.opacity = '0';
-            setTimeout(() => notification.remove(), 500);
-        }, 2000);
-        
         // Wait briefly for the process to stop completely
         setTimeout(() => {
             // Show loading indicator for game visualization
@@ -433,7 +373,6 @@ watchButton.addEventListener('click', function() {
             // Keep buttons disabled as process is running
             trainingButton.disabled = true;
             watchButton.disabled = true;
-            stopButton.disabled = false;
             
             // Initialize new game board
             initGameBoard();
@@ -456,27 +395,11 @@ watchButton.addEventListener('click', function() {
     
     trainingButton.disabled = true;
     watchButton.disabled = true;
-    stopButton.disabled = false;
     
     initGameBoard();
     
     // Update button states
     updateButtonStates();
-});
-
-stopButton.addEventListener('click', function() {
-    socket.emit('stop');
-    
-    // Don't immediately re-enable buttons
-    // Wait for the stopping_process and process_stopped events
-    stopButton.textContent = "Stopping...";
-    stopButton.style.backgroundColor = "#f65e3b";
-    stopButton.disabled = true;
-    
-    // Disable both buttons during stopping
-    trainingButton.disabled = true;
-    watchButton.disabled = true;
-    watchButton.style.opacity = "0.5";
 });
 
 // Socket.IO event handlers
@@ -486,17 +409,6 @@ socket.on('connect', function() {
 
 socket.on('disconnect', function() {
     console.log('Disconnected from server');
-});
-
-socket.on('stopping_process', function() {
-    // Visual feedback that stopping is in progress
-    stopButton.textContent = "Stopping...";
-    stopButton.style.backgroundColor = "#f65e3b";
-    stopButton.disabled = true;
-    
-    // Disable watch button while stopping is in progress
-    watchButton.disabled = true;
-    watchButton.style.opacity = "0.5";
 });
 
 socket.on('hardware_info', function(data) {
@@ -513,20 +425,106 @@ socket.on('training_update', function(data) {
     currentMode = 'train';
     updateButtonStates();
     
+    // Check for checkpoint info
+    if (data.status_message) {
+        // Show checkpoint info message
+        const checkpointInfo = document.getElementById('checkpoint-info');
+        checkpointInfo.textContent = data.status_message;
+        checkpointInfo.style.display = 'block';
+        
+        // Fade it out after 5 seconds
+        setTimeout(() => {
+            checkpointInfo.style.opacity = '0';
+            setTimeout(() => {
+                checkpointInfo.style.display = 'none';
+                checkpointInfo.style.opacity = '1';
+            }, 500);
+        }, 5000);
+    }
+    
+    // Mark episode number with special style if approaching checkpoint
+    const episodeCounter = document.getElementById('total-episodes');
+    if (data.approaching_checkpoint) {
+        episodeCounter.classList.add('checkpoint-approaching');
+    } else {
+        episodeCounter.classList.remove('checkpoint-approaching');
+    }
+    
     // Update training statistics display with formatted values
-    document.getElementById('avg-batch-reward').textContent = data.avg_batch_reward.toFixed(2);
-    document.getElementById('recent-avg-reward').textContent = data.recent_avg_reward.toFixed(2);
-    document.getElementById('best-avg-reward').textContent = data.best_avg_reward.toFixed(2);
-    document.getElementById('avg-episode-length').textContent = data.avg_batch_moves.toFixed(2);
-    document.getElementById('batch-max-tile').textContent = data.batch_max_tile;
-    document.getElementById('best-tile').textContent = data.best_max_tile;
-    document.getElementById('best-tile-rate').textContent = data.best_tile_rate.toFixed(1) + '%';
-    document.getElementById('current-lr').textContent = data.current_lr.toExponential(4);
-    document.getElementById('total-episodes').textContent = data.total_episodes;
+    // Make sure values are numeric before formatting them
+    const avgBatchReward = typeof data.avg_batch_reward === 'number' ? data.avg_batch_reward : parseFloat(data.avg_batch_reward || 0);
+    const recentAvgReward = typeof data.recent_avg_reward === 'number' ? data.recent_avg_reward : parseFloat(data.recent_avg_reward || 0);
+    const bestAvgReward = typeof data.best_avg_reward === 'number' ? data.best_avg_reward : parseFloat(data.best_avg_reward || 0);
+    const avgBatchMoves = typeof data.avg_batch_moves === 'number' ? data.avg_batch_moves : parseFloat(data.avg_batch_moves || 0);
+    const batchMaxTile = typeof data.batch_max_tile === 'number' ? data.batch_max_tile : parseInt(data.batch_max_tile || 0);
+    const bestMaxTile = typeof data.best_max_tile === 'number' ? data.best_max_tile : parseInt(data.best_max_tile || 0);
+    const bestTileRate = typeof data.best_tile_rate === 'number' ? data.best_tile_rate : parseFloat(data.best_tile_rate || 0);
+    const currentLr = typeof data.current_lr === 'number' ? data.current_lr : parseFloat(data.current_lr || 0);
+    // Special parsing for total episodes - force numeric parsing
+    let totalEpisodes = 0;
+    try {
+        if (typeof data.total_episodes === 'number') {
+            totalEpisodes = data.total_episodes;
+        } else if (typeof data.total_episodes === 'string') {
+            totalEpisodes = parseInt(data.total_episodes.trim(), 10);
+        } else if (data.total_episodes) {
+            totalEpisodes = parseInt(String(data.total_episodes).trim(), 10);
+        }
+        // If parsing failed or resulted in NaN, use 0
+        if (isNaN(totalEpisodes)) {
+            console.error("Failed to parse total_episodes:", data.total_episodes);
+            totalEpisodes = 0;
+        }
+    } catch (error) {
+        console.error("Error parsing total_episodes:", error);
+        totalEpisodes = 0;
+    }
+    
+    console.log("Total episodes debug:", {
+        original: data.total_episodes,
+        parsed: totalEpisodes,
+        type: typeof data.total_episodes
+    });
+    
+    document.getElementById('avg-batch-reward').textContent = avgBatchReward.toFixed(2);
+    document.getElementById('recent-avg-reward').textContent = recentAvgReward.toFixed(2);
+    document.getElementById('best-avg-reward').textContent = bestAvgReward.toFixed(2);
+    document.getElementById('avg-episode-length').textContent = avgBatchMoves.toFixed(2);
+    document.getElementById('batch-max-tile').textContent = batchMaxTile;
+    document.getElementById('best-tile').textContent = bestMaxTile;
+    document.getElementById('best-tile-rate').textContent = bestTileRate.toFixed(1) + '%';
+    document.getElementById('current-lr').textContent = currentLr.toExponential(4);
+    document.getElementById('total-episodes').textContent = totalEpisodes;
+    
+    // Log the parsed values for debugging
+    console.log("Parsed values:", {
+        avgBatchReward, recentAvgReward, bestAvgReward, avgBatchMoves, 
+        batchMaxTile, bestMaxTile, bestTileRate, currentLr, totalEpisodes
+    });
     
     // Update charts with history arrays if available
     if (data.rewards_chart && data.rewards_chart.length > 0) {
         console.log(`Updating charts with ${data.rewards_chart.length} data points`);
+        console.log("First few reward data points:", data.rewards_chart.slice(0, 5));
+        console.log("First few max tile data points:", data.max_tile_chart ? data.max_tile_chart.slice(0, 5) : "No data");
+        console.log("First few loss data points:", data.loss_chart ? data.loss_chart.slice(0, 5) : "No data");
+        console.log("First few moves data points:", data.moves_chart ? data.moves_chart.slice(0, 5) : "No data");
+        
+        // Make sure we have valid arrays of numbers for all charts
+        const rewardsData = Array.isArray(data.rewards_chart) ? 
+            data.rewards_chart.map(val => typeof val === 'number' ? val : parseFloat(val || 0)) : [];
+            
+        const maxTileData = Array.isArray(data.max_tile_chart) ? 
+            data.max_tile_chart.map(val => typeof val === 'number' ? val : parseInt(val || 0)) : [];
+            
+        const lossData = Array.isArray(data.loss_chart) ? 
+            data.loss_chart.map(val => typeof val === 'number' ? val : parseFloat(val || 0)) : [];
+            
+        const movesData = Array.isArray(data.moves_chart) ? 
+            data.moves_chart.map(val => typeof val === 'number' ? val : parseFloat(val || 0)) : [];
+        
+        // Log parsed data
+        console.log("Parsed rewards data:", rewardsData.slice(0, 5));
         
         // Clear existing data
         charts.reward.data.labels = [];
@@ -538,6 +536,7 @@ socket.on('training_update', function(data) {
         charts.loss.data.datasets[0].data = [];
         charts.moves.data.labels = [];
         charts.moves.data.datasets[0].data = [];
+        
         // Add a second dataset for the smoothed line if it doesn't exist yet
         if (charts.moves.data.datasets.length < 2) {
             charts.moves.data.datasets.push({
@@ -556,10 +555,10 @@ socket.on('training_update', function(data) {
         }
         
         // Add all history points
-        for (let i = 0; i < data.rewards_chart.length; i++) {
-            const episodeNum = data.total_episodes - data.rewards_chart.length + i + 1;
+        for (let i = 0; i < rewardsData.length; i++) {
+            const episodeNum = totalEpisodes - rewardsData.length + i + 1;
             charts.reward.data.labels.push(episodeNum);
-            charts.reward.data.datasets[0].data.push(data.rewards_chart[i]);
+            charts.reward.data.datasets[0].data.push(rewardsData[i]);
             
             // Calculate a proper smoothed average for rewards like we do for moves
             if (i === 0) {
@@ -576,23 +575,23 @@ socket.on('training_update', function(data) {
             
             // Max tile history
             charts.maxTile.data.labels.push(episodeNum);
-            if (data.max_tile_chart && i < data.max_tile_chart.length) {
-                charts.maxTile.data.datasets[0].data.push(data.max_tile_chart[i]);
+            if (maxTileData.length > 0 && i < maxTileData.length) {
+                charts.maxTile.data.datasets[0].data.push(maxTileData[i]);
             }
             
             // Loss history
             charts.loss.data.labels.push(episodeNum);
-            if (data.loss_chart && i < data.loss_chart.length) {
-                charts.loss.data.datasets[0].data.push(data.loss_chart[i]);
+            if (lossData.length > 0 && i < lossData.length) {
+                charts.loss.data.datasets[0].data.push(lossData[i]);
             }
             
             // Moves history (episode length)
             charts.moves.data.labels.push(episodeNum);
-            if (data.moves_chart && i < data.moves_chart.length) {
-                charts.moves.data.datasets[0].data.push(data.moves_chart[i]);
-            } else if (data.avg_batch_moves) {
+            if (movesData.length > 0 && i < movesData.length) {
+                charts.moves.data.datasets[0].data.push(movesData[i]);
+            } else if (avgBatchMoves) {
                 // Fallback if moves_chart isn't available
-                charts.moves.data.datasets[0].data.push(data.avg_batch_moves);
+                charts.moves.data.datasets[0].data.push(avgBatchMoves);
             }
             
             // Calculate smoothed average (10-episode moving average) for moves
@@ -604,11 +603,20 @@ socket.on('training_update', function(data) {
                     charts.moves.data.datasets[1].data = [];
                 }
                 
-                const windowSize = 15;
-                const startIdx = Math.max(0, i - windowSize + 1);
-                const window = charts.moves.data.datasets[0].data.slice(startIdx, i + 1);
-                const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
-                charts.moves.data.datasets[1].data.push(avgValue);
+                try {
+                    const windowSize = 15;
+                    const startIdx = Math.max(0, i - windowSize + 1);
+                    const window = charts.moves.data.datasets[0].data.slice(startIdx, i + 1);
+                    
+                    // Make sure all values in the window are numbers
+                    const numericWindow = window.map(v => typeof v === 'number' ? v : parseFloat(v || 0));
+                    const avgValue = numericWindow.reduce((sum, val) => sum + val, 0) / numericWindow.length;
+                    charts.moves.data.datasets[1].data.push(avgValue);
+                } catch (error) {
+                    console.error("Error calculating smoothed average:", error);
+                    // Add a safe fallback value
+                    charts.moves.data.datasets[1].data.push(charts.moves.data.datasets[0].data[i] || 0);
+                }
             }
         }
         
@@ -654,32 +662,46 @@ socket.on('training_update', function(data) {
             const windowSize = Math.min(15, charts.moves.data.datasets[0].data.length);
             
             // For moves chart
-            const currentMovesData = [...charts.moves.data.datasets[0].data, data.avg_batch_moves];
+            const currentMovesData = [...charts.moves.data.datasets[0].data, avgBatchMoves];
             const smoothedMovesData = [];
             for (let i = 0; i < currentMovesData.length; i++) {
-                const startIdx = Math.max(0, i - windowSize + 1);
-                const window = currentMovesData.slice(startIdx, i + 1);
-                const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
-                smoothedMovesData.push(avgValue);
+                try {
+                    const startIdx = Math.max(0, i - windowSize + 1);
+                    const window = currentMovesData.slice(startIdx, i + 1);
+                    // Make sure all values in the window are numbers
+                    const numericWindow = window.map(v => typeof v === 'number' ? v : parseFloat(v || 0));
+                    const avgValue = numericWindow.reduce((sum, val) => sum + val, 0) / numericWindow.length;
+                    smoothedMovesData.push(avgValue);
+                } catch (error) {
+                    console.error("Error calculating moves smoothed average:", error, "at index", i);
+                    smoothedMovesData.push(currentMovesData[i] || 0);
+                }
             }
             
             // For rewards chart
-            const currentRewardsData = [...charts.reward.data.datasets[0].data, data.avg_batch_reward];
+            const currentRewardsData = [...charts.reward.data.datasets[0].data, avgBatchReward];
             const smoothedRewardsData = [];
             for (let i = 0; i < currentRewardsData.length; i++) {
-                const startIdx = Math.max(0, i - windowSize + 1);
-                const window = currentRewardsData.slice(startIdx, i + 1);
-                const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
-                smoothedRewardsData.push(avgValue);
+                try {
+                    const startIdx = Math.max(0, i - windowSize + 1);
+                    const window = currentRewardsData.slice(startIdx, i + 1);
+                    // Make sure all values in the window are numbers
+                    const numericWindow = window.map(v => typeof v === 'number' ? v : parseFloat(v || 0));
+                    const avgValue = numericWindow.reduce((sum, val) => sum + val, 0) / numericWindow.length;
+                    smoothedRewardsData.push(avgValue);
+                } catch (error) {
+                    console.error("Error calculating rewards smoothed average:", error, "at index", i);
+                    smoothedRewardsData.push(currentRewardsData[i] || 0);
+                }
             }
             
             // Update moves chart with the latest point and smoothed value
             const latestMovesSmoothed = smoothedMovesData[smoothedMovesData.length - 1];
-            addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves, latestMovesSmoothed);
+            addDataPoint(charts.moves, totalEpisodes, avgBatchMoves, latestMovesSmoothed);
             
             // Update rewards chart with the latest point and smoothed value
             const latestRewardsSmoothed = smoothedRewardsData[smoothedRewardsData.length - 1];
-            addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, latestRewardsSmoothed);
+            addDataPoint(charts.reward, totalEpisodes, avgBatchReward, latestRewardsSmoothed);
             
             // Update all previous points' smoothed values for moves
             for (let i = 0; i < charts.moves.data.datasets[1].data.length - 1; i++) {
@@ -696,16 +718,19 @@ socket.on('training_update', function(data) {
             }
             
             // Update max tile chart
-            addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
+            addDataPoint(charts.maxTile, totalEpisodes, batchMaxTile);
             
-            // Update loss chart 
-            addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
+            // Update loss chart - make sure we have a valid value
+            const lossValue = typeof data.batch_loss === 'number' ? data.batch_loss : parseFloat(data.batch_loss || 0);
+            addDataPoint(charts.loss, totalEpisodes, lossValue);
         } else {
             // First data point - add to all charts
-            addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves, data.avg_batch_moves);
-            addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, data.avg_batch_reward);
-            addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
-            addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
+            addDataPoint(charts.moves, totalEpisodes, avgBatchMoves, avgBatchMoves);
+            addDataPoint(charts.reward, totalEpisodes, avgBatchReward, avgBatchReward);
+            addDataPoint(charts.maxTile, totalEpisodes, batchMaxTile);
+            // Make sure we have a valid loss value
+            const lossValue = typeof data.batch_loss === 'number' ? data.batch_loss : parseFloat(data.batch_loss || 0);
+            addDataPoint(charts.loss, totalEpisodes, lossValue);
         }
     }
 });
@@ -728,32 +753,15 @@ socket.on('process_stopped', function() {
     // Reset the current mode
     currentMode = null;
     
-    // Reset stop button
-    stopButton.disabled = true;
-    stopButton.textContent = "Stop Process";
-    stopButton.style.backgroundColor = ""; // Reset to default color
-    
     // Update all button states
     updateButtonStates();
-    
-    // Notify the user that the process has stopped
-    const notification = document.createElement('div');
-    notification.className = 'notification';
-    notification.textContent = 'Process stopped successfully';
-    document.body.appendChild(notification);
-    
-    // Remove notification after 3 seconds
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        setTimeout(() => notification.remove(), 500);
-    }, 3000);
 });
 
 socket.on('server_url', function(data) {
     document.getElementById('server-url').textContent = data.url;
 });
 
-// Add a loading indicator function
+// Add a loading indicator function - without notifications
 function showLoadingIndicator(show, message = "Processing...") {
     if (show) {
         // Create loading overlay if it doesn't exist
@@ -796,9 +804,6 @@ function updateButtonStates() {
         // Keep Training button enabled but with different visual style
         trainingButton.disabled = false;
         trainingButton.classList.add('btn-alternate');
-        
-        // Keep Stop button enabled
-        stopButton.disabled = false;
     } else if (currentMode === 'train') {
         // Reset Watch button
         watchButton.textContent = "Watch Gameplay";
@@ -809,9 +814,6 @@ function updateButtonStates() {
         // Disable Training button
         trainingButton.disabled = true;
         trainingButton.classList.remove('btn-alternate');
-        
-        // Keep Stop button enabled
-        stopButton.disabled = false;
     } else {
         // Reset all buttons to default state when stopped
         watchButton.textContent = "Watch Gameplay";
@@ -821,15 +823,12 @@ function updateButtonStates() {
         
         trainingButton.disabled = false;
         trainingButton.classList.remove('btn-alternate');
-        
-        stopButton.disabled = true;
     }
 }
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initCharts();
-    stopButton.disabled = true;
     // Make sure buttons are in correct initial state
     updateButtonStates();
 });

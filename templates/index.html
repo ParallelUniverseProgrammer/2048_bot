@@ -47,7 +47,6 @@
         <div class="controls">
             <button id="start-training" class="btn">Start Training</button>
             <button id="start-watch" class="btn btn-secondary">Watch Gameplay</button>
-            <button id="stop-process" class="btn" disabled>Stop Process</button>
         </div>
 
         <!-- Training Panel -->
@@ -57,6 +56,7 @@
             <div class="dashboard">
                 <div class="dashboard-panel">
                     <h3>Training Statistics</h3>
+                    <div id="checkpoint-info" class="checkpoint-status" style="display:none;">Checkpoint status</div>
                     <div class="training-stats">
                         <div class="stat-group">
                             <div class="stat">
@@ -64,35 +64,33 @@
                                 <div id="total-episodes" class="stat-value">0</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Average Batch Reward</div>
+                                <div class="stat-label">Avg Reward</div>
                                 <div id="avg-batch-reward" class="stat-value">0.00</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Smooth Average Reward</div>
+                                <div class="stat-label">Smooth Avg</div>
                                 <div id="recent-avg-reward" class="stat-value">0.00</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Best Average Reward</div>
+                                <div class="stat-label">Best Avg</div>
                                 <div id="best-avg-reward" class="stat-value">0.00</div>
                             </div>
+                        </div>
+                        <div class="stat-group compact">
                             <div class="stat">
-                                <div class="stat-label">Average Episode Length</div>
+                                <div class="stat-label">Avg Length</div>
                                 <div id="avg-episode-length" class="stat-value">0.00</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Best Tile (this batch)</div>
+                                <div class="stat-label">Batch Max Tile</div>
                                 <div id="batch-max-tile" class="stat-value">0</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Best Tile Overall</div>
+                                <div class="stat-label">Best Tile</div>
                                 <div id="best-tile" class="stat-value">0</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-label">Best Tile Rate</div>
-                                <div id="best-tile-rate" class="stat-value">0.0%</div>
-                            </div>
-                            <div class="stat">
-                                <div class="stat-label">Current Learning Rate</div>
+                                <div class="stat-label">LR</div>
                                 <div id="current-lr" class="stat-value">0.0000</div>
                             </div>
                         </div>
