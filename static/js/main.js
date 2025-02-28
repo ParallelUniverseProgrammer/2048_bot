@@ -1296,16 +1296,29 @@ function loadCheckpointsList() {
         });
 }
 
-function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
+function loadCheckpointInfo(checkpointPath = activeCheckpointPath, retryCount = 0) {
     // Update the active checkpoint path
     activeCheckpointPath = checkpointPath;
-    debugCheckpoint(`Loading checkpoint info for: ${checkpointPath}`);
+    debugCheckpoint(`Loading checkpoint info for: ${checkpointPath} (retry: ${retryCount})`);
     
-    // Show loading state
+    // Show loading state with message
     checkpointStatusLoading.classList.remove('hidden');
     checkpointStatusEmpty.classList.add('hidden');
     checkpointStatusError.classList.add('hidden');
     checkpointStatusLoaded.classList.add('hidden');
+    
+    // Update loading message based on retry count
+    if (retryCount > 0) {
+        checkpointStatusLoading.innerHTML = `
+            <div class="loading-spinner"></div>
+            <div>Retry attempt ${retryCount}/3: Loading checkpoint data...</div>
+        `;
+    } else {
+        checkpointStatusLoading.innerHTML = `
+            <div class="loading-spinner"></div>
+            <div>Loading checkpoint data...</div>
+        `;
+    }
     
     // Set a new timeout for this checkpoint loading operation
     if (checkpointLoadingTimeout) {
@@ -1313,11 +1326,12 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
     }
     checkpointLoadingTimeout = ensureCheckpointLoadingComplete();
     
-    // Create a timeout to abort the fetch if it takes too long
+    // Create a timeout to abort the fetch if it takes too long - longer time for retries
+    const fetchTimeout = 4000 + (retryCount * 1000); // Increase timeout with each retry
     const fetchTimeoutPromise = new Promise((resolve, reject) => {
         setTimeout(() => {
-            reject(new Error("Checkpoint info fetch timed out after 4 seconds"));
-        }, 4000);
+            reject(new Error(`Checkpoint info fetch timed out after ${fetchTimeout/1000} seconds`));
+        }, fetchTimeout);
     });
     
     // First, load the list of checkpoints to populate the dropdown
@@ -1333,8 +1347,9 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
             }
             
             // Now fetch details about the selected checkpoint, with a timeout
+            // Include retry count parameter in the request
             return Promise.race([
-                fetch(`/checkpoint_info?path=${encodeURIComponent(checkpointPath)}`),
+                fetch(`/checkpoint_info?path=${encodeURIComponent(checkpointPath)}&retry=${retryCount}`),
                 fetchTimeoutPromise
             ]);
         })
@@ -1343,6 +1358,22 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
             return response.json();
         })
         .then(data => {
+            // Check if server suggests a retry
+            if (data.should_retry && data.retry_count <= 3) {
+                // Update loading message with retry info
+                checkpointStatusLoading.innerHTML = `
+                    <div class="loading-spinner"></div>
+                    <div>${data.retry_message || 'Retrying...'}</div>
+                `;
+                
+                // Schedule retry with a short delay
+                debugCheckpoint(`Server suggests retry #${data.retry_count}, scheduling...`);
+                setTimeout(() => {
+                    loadCheckpointInfo(checkpointPath, data.retry_count);
+                }, 1000);
+                return;
+            }
+            
             // Hide loading state
             checkpointStatusLoading.classList.add('hidden');
             
@@ -1394,7 +1425,23 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
             console.error('Error fetching checkpoint info:', error);
             debugCheckpoint(`Error loading checkpoint info: ${error.message}`);
             
-            // Show error state
+            // If this was not the final retry attempt, try again
+            if (retryCount < 3) {
+                debugCheckpoint(`Scheduling retry #${retryCount + 1} after fetch error`);
+                // Update loading message with retry info
+                checkpointStatusLoading.innerHTML = `
+                    <div class="loading-spinner"></div>
+                    <div>Error occurred, retrying (${retryCount + 1}/3)...</div>
+                `;
+                
+                // Schedule retry with increasing delay
+                setTimeout(() => {
+                    loadCheckpointInfo(checkpointPath, retryCount + 1);
+                }, 1000 * (retryCount + 1));
+                return;
+            }
+            
+            // Show error state on final retry
             checkpointStatusLoading.classList.add('hidden');
             checkpointErrorMessage.textContent = 'Error loading checkpoint information';
             checkpointStatusError.classList.remove('hidden');
@@ -1636,6 +1683,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         clearTimeout(checkpointLoadingTimeout);
                         checkpointLoadingTimeout = null;
                     }
+                    
+                    // Show toast notification
+                    showToast('No checkpoints found. Train the model to create a checkpoint.', 'info');
                     return;
                 }
                 
@@ -1681,8 +1731,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     selectElement.value = pathToUse;
                 }
                 
-                // Continue with checkpoint info
-                loadCheckpointInfo(pathToUse);
+                // Continue with checkpoint info - with fresh retry count
+                loadCheckpointInfo(pathToUse, 0);
+                
+                // Show toast notification for successful refresh
+                showToast('Checkpoint list refreshed', 'success');
             })
             .catch(error => {
                 console.error("Error refreshing checkpoints:", error);
@@ -1692,13 +1745,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 checkpointErrorMessage.textContent = 'Error refreshing checkpoint list';
                 checkpointStatusError.classList.remove('hidden');
                 
+                // Show toast notification for the error
+                showToast('Error refreshing checkpoint list', 'error');
+                
                 // Still attempt to load with the default path as a fallback
                 if (currentPath && currentPath !== "undefined") {
                     debugCheckpoint(`Attempting fallback load with path: ${currentPath}`);
-                    setTimeout(() => loadCheckpointInfo(currentPath), 500);
+                    setTimeout(() => loadCheckpointInfo(currentPath, 0), 500);
                 } else {
                     debugCheckpoint(`Falling back to default model path`);
-                    setTimeout(() => loadCheckpointInfo("2048_model.pt"), 500);
+                    setTimeout(() => loadCheckpointInfo("2048_model.pt", 0), 500);
                 }
                 
                 // Clear the loading timeout since we reached an error state

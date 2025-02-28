@@ -138,8 +138,11 @@ def checkpoint_info():
         # Get path parameter, default to current model
         checkpoint_path = request.args.get('path', "2048_model.pt")
         
+        # Get retry parameter
+        retry_count = int(request.args.get('retry', "0"))
+        
         # Debug output to help with troubleshooting
-        print(f"Checkpoint info requested for: {checkpoint_path}")
+        print(f"Checkpoint info requested for: {checkpoint_path} (retry: {retry_count})")
         
         # Check if model checkpoint exists
         if not os.path.exists(checkpoint_path):
@@ -186,7 +189,8 @@ def checkpoint_info():
             "filename": os.path.basename(checkpoint_path),
             "path": checkpoint_path,
             "timestamp": created_time,
-            "current_time": current_time
+            "current_time": current_time,
+            "retry_count": retry_count
         }
         
         # Try to load model metadata, but don't let it prevent basic info from returning
@@ -201,7 +205,8 @@ def checkpoint_info():
                 
             # Use a timeout mechanism to prevent hanging
             def load_checkpoint():
-                return torch.load(checkpoint_path, map_location=device)
+                # Use weights_only=True to address PyTorch security warning
+                return torch.load(checkpoint_path, map_location=device, weights_only=True)
             
             # Create a thread to load the checkpoint with timeout protection
             import threading
@@ -214,18 +219,40 @@ def checkpoint_info():
                     checkpoint_data = load_checkpoint()
                 except Exception as e:
                     load_error = str(e)
+                    print(f"Error in load_with_timeout: {e}")
+            
+            # Increase timeout based on retry count for more reliability
+            base_timeout = 3.0  # Base timeout in seconds
+            timeout_increment = 1.0  # Increment per retry
+            max_timeout = 8.0  # Maximum timeout
+            
+            # Calculate timeout based on retry count, but cap at max_timeout
+            timeout_duration = min(base_timeout + (retry_count * timeout_increment), max_timeout)
+            print(f"Using timeout of {timeout_duration:.1f}s for retry {retry_count}")
             
             load_thread = threading.Thread(target=load_with_timeout)
             load_thread.daemon = True
             load_thread.start()
-            load_thread.join(timeout=2.0)  # Wait maximum 2 seconds
+            load_thread.join(timeout=timeout_duration)
             
             if load_thread.is_alive():
-                print("Checkpoint loading timed out")
+                print(f"Checkpoint loading timed out after {timeout_duration:.1f}s")
+                # If this is not the max retry, suggest a retry
+                if retry_count < 3:  # Limit to 3 retries
+                    basic_info["should_retry"] = True
+                    basic_info["retry_count"] = retry_count + 1
+                    basic_info["retry_message"] = f"Loading timed out, retrying ({retry_count + 1}/3)..."
+                
                 return jsonify(basic_info)
             
             if load_error:
                 print(f"Error loading checkpoint data: {load_error}")
+                # If we encountered an error and haven't hit max retries, suggest a retry
+                if retry_count < 3:  # Limit to 3 retries
+                    basic_info["should_retry"] = True
+                    basic_info["retry_count"] = retry_count + 1
+                    basic_info["retry_message"] = f"Error loading, retrying ({retry_count + 1}/3)..."
+                
                 return jsonify(basic_info)
             
             checkpoint = checkpoint_data
@@ -984,7 +1011,7 @@ def start_training(conn, stop_event, hyperparams=None):
                     "training_duration_formatted": format_duration(training_duration)
                 }
                 
-                # Save model with metadata
+                # Save model with metadata (with weights_only=True for security)
                 torch.save({
                     "state_dict": model.state_dict(),
                     "metadata": metadata
@@ -1072,7 +1099,7 @@ def start_training(conn, stop_event, hyperparams=None):
                     torch.save({
                         "state_dict": model.state_dict(),
                         "metadata": metadata
-                    }, "2048_model.pt")
+                    }, "2048_model.pt", _use_new_zipfile_serialization=True)
                     
                 save_duration = time.time() - save_start
                 print(f"✅ Checkpoint saved in {save_duration:.1f}s")
@@ -1105,7 +1132,7 @@ def start_training(conn, stop_event, hyperparams=None):
             torch.save({
                 "state_dict": model.state_dict(),
                 "metadata": metadata
-            }, "2048_model.pt")
+            }, "2048_model.pt", _use_new_zipfile_serialization=True)
     
     try:
         # Initialize device, model, optimizer, and scheduler
@@ -1128,7 +1155,7 @@ def start_training(conn, stop_event, hyperparams=None):
         try:
             if os.path.exists("2048_model.pt"):
                 print("Loading existing model for continued training")
-                checkpoint = torch.load("2048_model.pt", map_location=device)
+                checkpoint = torch.load("2048_model.pt", map_location=device, weights_only=True)
                 # Check if the checkpoint has the new format (with metadata)
                 if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
                     # Use non-strict loading to handle architecture changes
@@ -1231,7 +1258,7 @@ def start_watch(conn, stop_event, hyperparams=None):
             # When architecture changes, we need to be more flexible with loading
             try:
                 # Try to load using strict=False first (will load parameters that match)
-                checkpoint = torch.load("2048_model.pt", map_location=device)
+                checkpoint = torch.load("2048_model.pt", map_location=device, weights_only=True)
                 # Check if the checkpoint has the new format (with metadata)
                 if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
                     # Use non-strict loading to handle architecture changes
