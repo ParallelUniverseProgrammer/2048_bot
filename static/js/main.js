@@ -167,6 +167,15 @@ function initCharts() {
                 borderWidth: 2,
                 fill: true,
                 tension: 0.4
+            }, {
+                label: 'Smoothed Average',
+                data: [],
+                borderColor: '#03dac6',
+                backgroundColor: 'rgba(3, 218, 198, 0.0)',
+                borderWidth: 3,
+                fill: false,
+                tension: 0.6,
+                pointRadius: 0
             }]
         },
         options: {
@@ -338,6 +347,24 @@ socket.on('training_update', function(data) {
         charts.maxTile.data.datasets[0].data = [];
         charts.loss.data.labels = [];
         charts.loss.data.datasets[0].data = [];
+        charts.moves.data.labels = [];
+        charts.moves.data.datasets[0].data = [];
+        // Add a second dataset for the smoothed line if it doesn't exist yet
+        if (charts.moves.data.datasets.length < 2) {
+            charts.moves.data.datasets.push({
+                label: 'Smoothed Average',
+                data: [],
+                borderColor: '#03dac6',
+                backgroundColor: 'rgba(3, 218, 198, 0.0)',
+                borderWidth: 2,
+                fill: false,
+                tension: 0.6,
+                pointRadius: 0,
+                borderDash: [],
+            });
+        } else {
+            charts.moves.data.datasets[1].data = [];
+        }
         
         // Add all history points
         for (let i = 0; i < data.rewards_chart.length; i++) {
@@ -368,6 +395,15 @@ socket.on('training_update', function(data) {
                 // Fallback if moves_chart isn't available
                 charts.moves.data.datasets[0].data.push(data.avg_batch_moves);
             }
+            
+            // Calculate smoothed average (10-episode moving average) for moves
+            if (charts.moves.data.datasets[0].data.length > 0) {
+                const windowSize = 10;
+                const startIdx = Math.max(0, charts.moves.data.datasets[0].data.length - windowSize);
+                const values = charts.moves.data.datasets[0].data.slice(startIdx);
+                const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length;
+                charts.moves.data.datasets[1].data.push(avgValue);
+            }
         }
         
         // Update all charts
@@ -381,7 +417,32 @@ socket.on('training_update', function(data) {
         addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, data.recent_avg_reward);
         addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
         addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
-        addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves);
+        
+        // Add points to both datasets for the moves chart
+        if (charts.moves.data.datasets.length === 1) {
+            charts.moves.data.datasets.push({
+                label: 'Smoothed Average',
+                data: [],
+                borderColor: '#03dac6',
+                backgroundColor: 'rgba(3, 218, 198, 0.0)',
+                borderWidth: 3,
+                fill: false,
+                tension: 0.6,
+                pointRadius: 0
+            });
+        }
+        
+        // Calculate smoothed average for moves chart
+        if (charts.moves.data.datasets[0].data.length > 0) {
+            const windowSize = Math.min(10, charts.moves.data.datasets[0].data.length);
+            const startIdx = Math.max(0, charts.moves.data.datasets[0].data.length - windowSize);
+            const values = [...charts.moves.data.datasets[0].data.slice(startIdx), data.avg_batch_moves];
+            const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length;
+            
+            addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves, avgValue);
+        } else {
+            addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves, data.avg_batch_moves);
+        }
     }
 });
 

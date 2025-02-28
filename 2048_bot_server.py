@@ -653,10 +653,16 @@ def handle_training_updates(conn):
                         client_data['rewards_chart'] = list(training_data['rewards_history'])
                         client_data['max_tile_chart'] = list(training_data['max_tile_history'])
                         client_data['loss_chart'] = list(training_data['loss_history'])
-                        client_data['moves_chart'] = list(moves_history[-100:]) if 'moves_history' in locals() else []
+                        # Always include moves history from the training process
+                        training_data['moves_history'] = training_data.get('moves_history', deque(maxlen=100))
+                        if 'moves_history' not in training_data:
+                            training_data['moves_history'] = deque(maxlen=100)
+                        if hasattr(data, 'avg_batch_moves'):
+                            training_data['moves_history'].append(data['avg_batch_moves'])
+                        client_data['moves_chart'] = list(training_data['moves_history'])
                         
                         # For debugging:
-                        print(f"Chart data sizes: rewards={len(client_data['rewards_chart'])}, tiles={len(client_data['max_tile_chart'])}, loss={len(client_data['loss_chart'])}")
+                        print(f"Chart data sizes: rewards={len(client_data['rewards_chart'])}, tiles={len(client_data['max_tile_chart'])}, loss={len(client_data['loss_chart'])}, moves={len(client_data['moves_chart'])}")
                         
                         # Immediately send the update to the client
                         print("Emitting training update to clients")
