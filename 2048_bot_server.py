@@ -114,6 +114,9 @@ def handle_start(data):
     # Reset stop event
     stop_event.clear()
     
+    # Get hyperparameters if provided
+    hyperparams = data.get('hyperparams', None)
+    
     # Start the requested mode
     mode = data.get('mode', 'train')
     if mode == 'train':
@@ -124,7 +127,7 @@ def handle_start(data):
         # Start the training in a thread
         training_thread = threading.Thread(
             target=run_in_thread, 
-            args=(start_training, child_conn, stop_event)
+            args=(start_training, child_conn, stop_event, hyperparams)
         )
         training_thread.daemon = True
         training_thread.start()
@@ -145,7 +148,7 @@ def handle_start(data):
         # Start the watch mode in a thread
         training_thread = threading.Thread(
             target=run_in_thread, 
-            args=(start_watch, child_conn, stop_event)
+            args=(start_watch, child_conn, stop_event, hyperparams)
         )
         training_thread.daemon = True
         training_thread.start()
@@ -159,9 +162,12 @@ def handle_start(data):
         update_thread.start()
 
 # Helper function to run training/watch functions in a thread
-def run_in_thread(target_function, conn, stop_event):
+def run_in_thread(target_function, conn, stop_event, hyperparams=None):
     try:
-        target_function(conn, stop_event)
+        if hyperparams:
+            target_function(conn, stop_event, hyperparams)
+        else:
+            target_function(conn, stop_event)
     except Exception as e:
         print(f"Error in thread: {e}")
         try:
@@ -265,8 +271,156 @@ def start_hardware_monitoring():
         hardware_monitor_thread.daemon = True
         hardware_monitor_thread.start()
 
+# Handle set_hyperparams event
+@socketio.on('set_hyperparams')
+def handle_set_hyperparams(hyperparams):
+    # Apply hyperparameters to the module
+    if hyperparams:
+        try:
+            print("Applying hyperparameters:", hyperparams)
+            
+            # Learning parameters
+            if 'learning_rate' in hyperparams:
+                bot_module.LEARNING_RATE = hyperparams['learning_rate']
+            if 'early_lr_multiplier' in hyperparams:
+                bot_module.EARLY_LR_MULTIPLIER = hyperparams['early_lr_multiplier']
+            if 'warmup_episodes' in hyperparams:
+                bot_module.WARMUP_EPISODES = hyperparams['warmup_episodes']
+            if 'grad_clip' in hyperparams:
+                bot_module.GRAD_CLIP = hyperparams['grad_clip']
+            if 'lr_scheduler_patience' in hyperparams:
+                bot_module.LR_SCHEDULER_PATIENCE = hyperparams['lr_scheduler_patience']
+            if 'lr_scheduler_factor' in hyperparams:
+                bot_module.LR_SCHEDULER_FACTOR = hyperparams['lr_scheduler_factor']
+                
+            # Architecture parameters
+            if 'base_dmodel' in hyperparams:
+                bot_module.DMODEL = hyperparams['base_dmodel']
+            if 'base_nhead' in hyperparams:
+                bot_module.NHEAD = hyperparams['base_nhead']
+            if 'base_transformer_layers' in hyperparams:
+                bot_module.NUM_TRANSFORMER_LAYERS = hyperparams['base_transformer_layers']
+            if 'base_high_level_layers' in hyperparams:
+                bot_module.NUM_HIGH_LEVEL_LAYERS = hyperparams['base_high_level_layers']
+            if 'base_dropout' in hyperparams:
+                bot_module.DROPOUT = hyperparams['base_dropout']
+                
+            # Reward function parameters
+            if 'high_tile_bonus' in hyperparams:
+                bot_module.HIGH_TILE_BONUS = hyperparams['high_tile_bonus']
+            if 'ineffective_penalty' in hyperparams:
+                bot_module.INEFFECTIVE_PENALTY = hyperparams['ineffective_penalty']
+            if 'reward_scaling' in hyperparams:
+                bot_module.REWARD_SCALING = hyperparams['reward_scaling']
+            if 'time_factor_constant' in hyperparams:
+                bot_module.TIME_FACTOR_CONSTANT = hyperparams['time_factor_constant']
+            if 'novelty_bonus' in hyperparams:
+                bot_module.NOVELTY_BONUS = hyperparams['novelty_bonus']
+            if 'high_tile_threshold' in hyperparams:
+                bot_module.HIGH_TILE_THRESHOLD = hyperparams['high_tile_threshold']
+            if 'pattern_diversity_bonus' in hyperparams:
+                bot_module.PATTERN_DIVERSITY_BONUS = hyperparams['pattern_diversity_bonus']
+            if 'strategy_shift_bonus' in hyperparams:
+                bot_module.STRATEGY_SHIFT_BONUS = hyperparams['strategy_shift_bonus']
+                
+            # Exploration parameters
+            if 'use_temperature_annealing' in hyperparams:
+                bot_module.USE_TEMPERATURE_ANNEALING = hyperparams['use_temperature_annealing']
+            if 'initial_temperature' in hyperparams:
+                bot_module.INITIAL_TEMPERATURE = hyperparams['initial_temperature']
+            if 'final_temperature' in hyperparams:
+                bot_module.FINAL_TEMPERATURE = hyperparams['final_temperature']
+            if 'temperature_decay' in hyperparams:
+                bot_module.TEMPERATURE_DECAY = hyperparams['temperature_decay']
+                
+            # Training parameters
+            if 'base_batch_size' in hyperparams:
+                bot_module.BATCH_SIZE = hyperparams['base_batch_size']
+            if 'model_save_interval' in hyperparams:
+                bot_module.MODEL_SAVE_INTERVAL = hyperparams['model_save_interval']
+                
+            # Send confirmation back to client
+            socketio.emit('hyperparams_updated', {'status': 'success', 'hyperparams': hyperparams})
+            
+        except Exception as e:
+            print(f"Error applying hyperparameters: {e}")
+            socketio.emit('hyperparams_updated', {'status': 'error', 'error': str(e)})
+    else:
+        socketio.emit('hyperparams_updated', {'status': 'error', 'error': 'No hyperparameters provided'})
+
 # Function to run training mode
-def start_training(conn, stop_event):
+def start_training(conn, stop_event, hyperparams=None):
+    # Apply hyperparameters if provided
+    if hyperparams:
+        try:
+            print("Applying hyperparameters for training:", hyperparams)
+            
+            # Apply the same hyperparameter updates as in handle_set_hyperparams
+            # Learning parameters
+            if 'learning_rate' in hyperparams:
+                bot_module.LEARNING_RATE = hyperparams['learning_rate']
+            if 'early_lr_multiplier' in hyperparams:
+                bot_module.EARLY_LR_MULTIPLIER = hyperparams['early_lr_multiplier']
+            if 'warmup_episodes' in hyperparams:
+                bot_module.WARMUP_EPISODES = hyperparams['warmup_episodes']
+            if 'grad_clip' in hyperparams:
+                bot_module.GRAD_CLIP = hyperparams['grad_clip']
+            if 'lr_scheduler_patience' in hyperparams:
+                bot_module.LR_SCHEDULER_PATIENCE = hyperparams['lr_scheduler_patience']
+            if 'lr_scheduler_factor' in hyperparams:
+                bot_module.LR_SCHEDULER_FACTOR = hyperparams['lr_scheduler_factor']
+                
+            # Architecture parameters
+            if 'base_dmodel' in hyperparams:
+                bot_module.DMODEL = hyperparams['base_dmodel']
+            if 'base_nhead' in hyperparams:
+                bot_module.NHEAD = hyperparams['base_nhead']
+            if 'base_transformer_layers' in hyperparams:
+                bot_module.NUM_TRANSFORMER_LAYERS = hyperparams['base_transformer_layers']
+            if 'base_high_level_layers' in hyperparams:
+                bot_module.NUM_HIGH_LEVEL_LAYERS = hyperparams['base_high_level_layers']
+            if 'base_dropout' in hyperparams:
+                bot_module.DROPOUT = hyperparams['base_dropout']
+                
+            # Reward function parameters
+            if 'high_tile_bonus' in hyperparams:
+                bot_module.HIGH_TILE_BONUS = hyperparams['high_tile_bonus']
+            if 'ineffective_penalty' in hyperparams:
+                bot_module.INEFFECTIVE_PENALTY = hyperparams['ineffective_penalty']
+            if 'reward_scaling' in hyperparams:
+                bot_module.REWARD_SCALING = hyperparams['reward_scaling']
+            if 'time_factor_constant' in hyperparams:
+                bot_module.TIME_FACTOR_CONSTANT = hyperparams['time_factor_constant']
+            if 'novelty_bonus' in hyperparams:
+                bot_module.NOVELTY_BONUS = hyperparams['novelty_bonus']
+            if 'high_tile_threshold' in hyperparams:
+                bot_module.HIGH_TILE_THRESHOLD = hyperparams['high_tile_threshold']
+            if 'pattern_diversity_bonus' in hyperparams:
+                bot_module.PATTERN_DIVERSITY_BONUS = hyperparams['pattern_diversity_bonus']
+            if 'strategy_shift_bonus' in hyperparams:
+                bot_module.STRATEGY_SHIFT_BONUS = hyperparams['strategy_shift_bonus']
+                
+            # Exploration parameters
+            if 'use_temperature_annealing' in hyperparams:
+                bot_module.USE_TEMPERATURE_ANNEALING = hyperparams['use_temperature_annealing']
+            if 'initial_temperature' in hyperparams:
+                bot_module.INITIAL_TEMPERATURE = hyperparams['initial_temperature']
+            if 'final_temperature' in hyperparams:
+                bot_module.FINAL_TEMPERATURE = hyperparams['final_temperature']
+            if 'temperature_decay' in hyperparams:
+                bot_module.TEMPERATURE_DECAY = hyperparams['temperature_decay']
+                
+            # Training parameters
+            if 'base_batch_size' in hyperparams:
+                bot_module.BATCH_SIZE = hyperparams['base_batch_size']
+            if 'model_save_interval' in hyperparams:
+                bot_module.MODEL_SAVE_INTERVAL = hyperparams['model_save_interval']
+                
+        except Exception as e:
+            print(f"Error applying hyperparameters for training: {e}")
+            conn.send({"error": f"Error applying hyperparameters: {e}"})
+            return
+    
     # High-performance data collector with immediate updates
     class DataCollector:
         def __init__(self, connection):
@@ -675,7 +829,30 @@ def start_training(conn, stop_event):
         conn.close()
 
 # Function to run watch mode
-def start_watch(conn, stop_event):
+def start_watch(conn, stop_event, hyperparams=None):
+    # Apply hyperparameters if provided
+    if hyperparams:
+        try:
+            print("Applying hyperparameters for watch mode:", hyperparams)
+            
+            # Apply the same hyperparameter updates as in handle_set_hyperparams
+            # Just applying architecture parameters for the watch mode
+            if 'base_dmodel' in hyperparams:
+                bot_module.DMODEL = hyperparams['base_dmodel']
+            if 'base_nhead' in hyperparams:
+                bot_module.NHEAD = hyperparams['base_nhead']
+            if 'base_transformer_layers' in hyperparams:
+                bot_module.NUM_TRANSFORMER_LAYERS = hyperparams['base_transformer_layers']
+            if 'base_high_level_layers' in hyperparams:
+                bot_module.NUM_HIGH_LEVEL_LAYERS = hyperparams['base_high_level_layers']
+            if 'base_dropout' in hyperparams:
+                bot_module.DROPOUT = hyperparams['base_dropout']
+                
+        except Exception as e:
+            print(f"Error applying hyperparameters for watch mode: {e}")
+            conn.send({"error": f"Error applying hyperparameters: {e}"})
+            return
+    
     try:
         # Initialize device and model
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

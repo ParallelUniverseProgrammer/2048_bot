@@ -5,157 +5,422 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2048 RL Bot Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
 </head>
-<body>
-    <div class="container">
-        <header>
-            <h1>2048 RL Bot Dashboard</h1>
-            <div class="subtitle">Advanced reinforcement learning agent using deep Transformer architecture</div>
-            <div>
-                Web UI: <span id="server-url" style="font-weight: bold; color: var(--secondary-color);"></span>
-            </div>
-        </header>
-
-        <div class="card">
-            <h2>Hardware Monitoring</h2>
-            <div class="hardware-info">
-                <div class="hardware-card">
-                    <div class="hardware-title">CPU Usage</div>
-                    <div id="cpu-usage">
-                        <div class="hardware-value">0.0%</div>
-                        <div class="hardware-details">0 cores</div>
+<body class="dark-theme">
+    <div class="app-container">
+        <div class="app-header">
+            <div class="header-content">
+                <h1>2048 RL Bot</h1>
+                <div class="subtitle">Advanced reinforcement learning agent with Transformer architecture</div>
+                <div class="header-actions">
+                    <div class="theme-toggle">
+                        <select id="theme-selector" class="material-select">
+                            <option value="dark">Dark Theme</option>
+                            <option value="light">Light Theme</option>
+                        </select>
                     </div>
-                </div>
-                <div class="hardware-card">
-                    <div class="hardware-title">RAM Usage</div>
-                    <div id="ram-usage">
-                        <div class="hardware-value">0.0 GB</div>
-                        <div class="hardware-details">0.0% of 0.0 GB</div>
+                    <div class="connection-info">
+                        <i class="material-icons">link</i>
+                        <span id="server-url"></span>
                     </div>
-                </div>
-            </div>
-            <div id="gpu-info" class="hardware-info">
-                <div class="hardware-card">
-                    <div class="hardware-value">No GPUs detected</div>
                 </div>
             </div>
         </div>
 
-        <div class="controls">
-            <button id="start-training" class="btn">Start Training</button>
-            <button id="start-watch" class="btn btn-secondary">Watch Gameplay</button>
-        </div>
+        <div class="app-content">
+            <div class="main-controls card">
+                <div class="control-buttons">
+                    <button id="start-training" class="material-button primary">
+                        <i class="material-icons">playlist_add_check</i>Start Training
+                    </button>
+                    <button id="start-watch" class="material-button secondary">
+                        <i class="material-icons">visibility</i>Watch Gameplay
+                    </button>
+                </div>
+            </div>
 
-        <!-- Training Panel -->
-        <div id="training-panel" class="card hidden">
-            <h2>Training Progress</h2>
-            
-            <div class="dashboard">
-                <div class="dashboard-panel">
-                    <h3>Training Statistics</h3>
-                    <div id="checkpoint-info" class="checkpoint-status" style="display:none;">Checkpoint status</div>
-                    <div class="training-stats">
-                        <div class="stat-group">
-                            <div class="stat" title="Total training episodes">
-                                <div class="stat-label">Episodes</div>
-                                <div id="total-episodes" class="stat-value">0</div>
-                            </div>
-                            <div class="stat" title="Current batch average reward">
-                                <div class="stat-label">Reward</div>
-                                <div id="avg-batch-reward" class="stat-value">0.00</div>
-                            </div>
-                            <div class="stat" title="Recent average reward (smoothed)">
-                                <div class="stat-label">Avg Reward</div>
-                                <div id="recent-avg-reward" class="stat-value">0.00</div>
-                            </div>
-                            <div class="stat" title="Best average reward achieved">
-                                <div class="stat-label">Best Reward</div>
-                                <div id="best-avg-reward" class="stat-value">0.00</div>
+            <div class="card system-monitor">
+                <div class="card-header">
+                    <h2><i class="material-icons">memory</i>System Resources</h2>
+                    <button id="toggle-hardware" class="material-button icon-button">
+                        <i class="material-icons">expand_more</i>
+                    </button>
+                </div>
+                <div id="hardware-panel" class="hardware-panel">
+                    <div class="hardware-grid">
+                        <div class="hardware-card">
+                            <div class="hardware-title"><i class="material-icons">memory</i>CPU Usage</div>
+                            <div id="cpu-usage">
+                                <div class="hardware-value">0.0%</div>
+                                <div class="hardware-details">0 cores</div>
                             </div>
                         </div>
-                        <div class="stat-group compact">
-                            <div class="stat" title="Average number of moves per episode">
-                                <div class="stat-label">Moves/Ep</div>
-                                <div id="avg-episode-length" class="stat-value">0.00</div>
+                        <div class="hardware-card">
+                            <div class="hardware-title"><i class="material-icons">sd_storage</i>RAM Usage</div>
+                            <div id="ram-usage">
+                                <div class="hardware-value">0.0 GB</div>
+                                <div class="hardware-details">0.0% of 0.0 GB</div>
                             </div>
-                            <div class="stat" title="Highest tile in current batch">
-                                <div class="stat-label">Cur Max Tile</div>
-                                <div id="batch-max-tile" class="stat-value">0</div>
+                        </div>
+                    </div>
+                    <div id="gpu-info" class="hardware-grid">
+                        <div class="hardware-card">
+                            <div class="hardware-value">No GPUs detected</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hyperparameter Panel -->
+            <div class="card hyperparameter-panel">
+                <div class="card-header">
+                    <h2><i class="material-icons">tune</i>Hyperparameters</h2>
+                    <button id="toggle-hyperparams" class="material-button icon-button">
+                        <i class="material-icons">expand_more</i>
+                    </button>
+                </div>
+                <div id="hyperparams-content" class="hyperparams-content">
+                    <div class="tabs">
+                        <button class="tab-button active" data-tab="learning">Learning</button>
+                        <button class="tab-button" data-tab="architecture">Architecture</button>
+                        <button class="tab-button" data-tab="reward">Reward Function</button>
+                        <button class="tab-button" data-tab="exploration">Exploration</button>
+                        <button class="tab-button" data-tab="training">Training</button>
+                    </div>
+                    
+                    <div id="learning-tab" class="tab-content active">
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="learning-rate">Learning Rate</label>
+                                <div class="param-control">
+                                    <input type="range" id="learning-rate" min="0.0001" max="0.001" step="0.0001" value="0.0003">
+                                    <input type="number" id="learning-rate-value" min="0.0001" max="0.001" step="0.0001" value="0.0003">
+                                </div>
                             </div>
-                            <div class="stat" title="Best tile achieved overall">
+                            <div class="param-item">
+                                <label for="early-lr-mult">Early LR Multiplier</label>
+                                <div class="param-control">
+                                    <input type="range" id="early-lr-mult" min="1" max="3" step="0.1" value="1.8">
+                                    <input type="number" id="early-lr-mult-value" min="1" max="3" step="0.1" value="1.8">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="warmup-episodes">Warmup Episodes</label>
+                                <div class="param-control">
+                                    <input type="range" id="warmup-episodes" min="5" max="50" step="1" value="25">
+                                    <input type="number" id="warmup-episodes-value" min="5" max="50" step="1" value="25">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="grad-clip">Gradient Clip</label>
+                                <div class="param-control">
+                                    <input type="range" id="grad-clip" min="0.5" max="1.5" step="0.05" value="0.85">
+                                    <input type="number" id="grad-clip-value" min="0.5" max="1.5" step="0.05" value="0.85">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="lr-scheduler-patience">LR Scheduler Patience</label>
+                                <div class="param-control">
+                                    <input type="range" id="lr-scheduler-patience" min="10" max="150" step="5" value="80">
+                                    <input type="number" id="lr-scheduler-patience-value" min="10" max="150" step="5" value="80">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="lr-scheduler-factor">LR Scheduler Factor</label>
+                                <div class="param-control">
+                                    <input type="range" id="lr-scheduler-factor" min="0.5" max="0.95" step="0.05" value="0.75">
+                                    <input type="number" id="lr-scheduler-factor-value" min="0.5" max="0.95" step="0.05" value="0.75">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="architecture-tab" class="tab-content">
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="base-dmodel">D-Model Size</label>
+                                <div class="param-control">
+                                    <input type="range" id="base-dmodel" min="96" max="384" step="32" value="192">
+                                    <input type="number" id="base-dmodel-value" min="96" max="384" step="32" value="192">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="base-nhead">Attention Heads</label>
+                                <div class="param-control">
+                                    <input type="range" id="base-nhead" min="4" max="16" step="2" value="8">
+                                    <input type="number" id="base-nhead-value" min="4" max="16" step="2" value="8">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="base-transformer-layers">Transformer Layers</label>
+                                <div class="param-control">
+                                    <input type="range" id="base-transformer-layers" min="2" max="12" step="1" value="6">
+                                    <input type="number" id="base-transformer-layers-value" min="2" max="12" step="1" value="6">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="base-high-level-layers">High-Level Layers</label>
+                                <div class="param-control">
+                                    <input type="range" id="base-high-level-layers" min="0" max="4" step="1" value="1">
+                                    <input type="number" id="base-high-level-layers-value" min="0" max="4" step="1" value="1">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="base-dropout">Dropout Rate</label>
+                                <div class="param-control">
+                                    <input type="range" id="base-dropout" min="0" max="0.5" step="0.05" value="0.15">
+                                    <input type="number" id="base-dropout-value" min="0" max="0.5" step="0.05" value="0.15">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="reward-tab" class="tab-content">
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="high-tile-bonus">High Tile Bonus</label>
+                                <div class="param-control">
+                                    <input type="range" id="high-tile-bonus" min="1" max="10" step="0.5" value="5.5">
+                                    <input type="number" id="high-tile-bonus-value" min="1" max="10" step="0.5" value="5.5">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="ineffective-penalty">Ineffective Penalty</label>
+                                <div class="param-control">
+                                    <input type="range" id="ineffective-penalty" min="0" max="0.5" step="0.05" value="0.15">
+                                    <input type="number" id="ineffective-penalty-value" min="0" max="0.5" step="0.05" value="0.15">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="reward-scaling">Reward Scaling</label>
+                                <div class="param-control">
+                                    <input type="range" id="reward-scaling" min="0.01" max="0.5" step="0.01" value="0.12">
+                                    <input type="number" id="reward-scaling-value" min="0.01" max="0.5" step="0.01" value="0.12">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="time-factor-constant">Time Factor</label>
+                                <div class="param-control">
+                                    <input type="range" id="time-factor-constant" min="10" max="100" step="5" value="50">
+                                    <input type="number" id="time-factor-constant-value" min="10" max="100" step="5" value="50">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="novelty-bonus">Novelty Bonus</label>
+                                <div class="param-control">
+                                    <input type="range" id="novelty-bonus" min="0" max="10" step="0.5" value="4.0">
+                                    <input type="number" id="novelty-bonus-value" min="0" max="10" step="0.5" value="4.0">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="high-tile-threshold">High Tile Threshold</label>
+                                <div class="param-control">
+                                    <select id="high-tile-threshold" class="material-select">
+                                        <option value="128">128</option>
+                                        <option value="256">256</option>
+                                        <option value="512" selected>512</option>
+                                        <option value="1024">1024</option>
+                                        <option value="2048">2048</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="pattern-diversity-bonus">Pattern Diversity Bonus</label>
+                                <div class="param-control">
+                                    <input type="range" id="pattern-diversity-bonus" min="0" max="5" step="0.5" value="2.0">
+                                    <input type="number" id="pattern-diversity-bonus-value" min="0" max="5" step="0.5" value="2.0">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="strategy-shift-bonus">Strategy Shift Bonus</label>
+                                <div class="param-control">
+                                    <input type="range" id="strategy-shift-bonus" min="0" max="3" step="0.1" value="1.0">
+                                    <input type="number" id="strategy-shift-bonus-value" min="0" max="3" step="0.1" value="1.0">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="exploration-tab" class="tab-content">
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="temperature-annealing">Temperature Annealing</label>
+                                <div class="param-control">
+                                    <div class="toggle-switch">
+                                        <input type="checkbox" id="temperature-annealing" checked>
+                                        <label for="temperature-annealing"></label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="initial-temperature">Initial Temperature</label>
+                                <div class="param-control">
+                                    <input type="range" id="initial-temperature" min="0.5" max="2.5" step="0.1" value="1.4">
+                                    <input type="number" id="initial-temperature-value" min="0.5" max="2.5" step="0.1" value="1.4">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="final-temperature">Final Temperature</label>
+                                <div class="param-control">
+                                    <input type="range" id="final-temperature" min="0.5" max="1.5" step="0.1" value="0.8">
+                                    <input type="number" id="final-temperature-value" min="0.5" max="1.5" step="0.1" value="0.8">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="temperature-decay">Temperature Decay</label>
+                                <div class="param-control">
+                                    <input type="range" id="temperature-decay" min="0.9995" max="0.99999" step="0.00001" value="0.99995">
+                                    <input type="number" id="temperature-decay-value" min="0.9995" max="0.99999" step="0.00001" value="0.99995">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="training-tab" class="tab-content">
+                        <div class="param-grid">
+                            <div class="param-item">
+                                <label for="base-batch-size">Batch Size</label>
+                                <div class="param-control">
+                                    <input type="range" id="base-batch-size" min="8" max="32" step="4" value="20">
+                                    <input type="number" id="base-batch-size-value" min="8" max="32" step="4" value="20">
+                                </div>
+                            </div>
+                            <div class="param-item">
+                                <label for="model-save-interval">Save Interval (episodes)</label>
+                                <div class="param-control">
+                                    <input type="range" id="model-save-interval" min="50" max="500" step="50" value="200">
+                                    <input type="number" id="model-save-interval-value" min="50" max="500" step="50" value="200">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="param-actions">
+                        <button id="apply-hyperparams" class="material-button primary">Apply</button>
+                        <button id="reset-hyperparams" class="material-button secondary">Reset to Defaults</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Panel -->
+            <div id="training-panel" class="card hidden">
+                <div class="card-header">
+                    <h2><i class="material-icons">insights</i>Training Progress</h2>
+                </div>
+                
+                <div class="dashboard">
+                    <div class="dashboard-panel stats-panel">
+                        <h3>Training Statistics</h3>
+                        <div id="checkpoint-info" class="checkpoint-status" style="display:none;">Checkpoint status</div>
+                        <div class="training-stats">
+                            <div class="stat-group">
+                                <div class="stat" title="Total training episodes">
+                                    <div class="stat-label">Episodes</div>
+                                    <div id="total-episodes" class="stat-value">0</div>
+                                </div>
+                                <div class="stat" title="Current batch average reward">
+                                    <div class="stat-label">Reward</div>
+                                    <div id="avg-batch-reward" class="stat-value">0.00</div>
+                                </div>
+                                <div class="stat" title="Recent average reward (smoothed)">
+                                    <div class="stat-label">Avg Reward</div>
+                                    <div id="recent-avg-reward" class="stat-value">0.00</div>
+                                </div>
+                                <div class="stat" title="Best average reward achieved">
+                                    <div class="stat-label">Best Reward</div>
+                                    <div id="best-avg-reward" class="stat-value">0.00</div>
+                                </div>
+                            </div>
+                            <div class="stat-group compact">
+                                <div class="stat" title="Average number of moves per episode">
+                                    <div class="stat-label">Moves/Ep</div>
+                                    <div id="avg-episode-length" class="stat-value">0.00</div>
+                                </div>
+                                <div class="stat" title="Highest tile in current batch">
+                                    <div class="stat-label">Cur Max Tile</div>
+                                    <div id="batch-max-tile" class="stat-value">0</div>
+                                </div>
+                                <div class="stat" title="Best tile achieved overall">
+                                    <div class="stat-label">Best Tile</div>
+                                    <div id="best-tile" class="stat-value">0</div>
+                                </div>
+                                <div class="stat" title="Current learning rate">
+                                    <div class="stat-label">LR</div>
+                                    <div id="current-lr" class="stat-value">0.0000</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-panel charts-panel">
+                        <h3>Performance Charts</h3>
+                        <div class="metrics-grid">
+                            <div class="metrics-container">
+                                <canvas id="reward-chart"></canvas>
+                            </div>
+                            <div class="metrics-container">
+                                <canvas id="max-tile-chart"></canvas>
+                            </div>
+                            <div class="metrics-container">
+                                <canvas id="loss-chart"></canvas>
+                            </div>
+                            <div class="metrics-container">
+                                <canvas id="moves-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Watch Panel -->
+            <div id="watch-panel" class="card hidden">
+                <div class="card-header">
+                    <h2><i class="material-icons">videogame_asset</i>Game Visualization</h2>
+                </div>
+                
+                <div class="dashboard">
+                    <div class="dashboard-panel game-panel">
+                        <div id="game-board" class="game-board"></div>
+                        
+                        <div class="game-info">
+                            <div class="game-stats">
+                                <div class="stat-label">Score</div>
+                                <div id="game-score" class="stat-value">0</div>
+                            </div>
+                            <div class="game-stats">
                                 <div class="stat-label">Best Tile</div>
-                                <div id="best-tile" class="stat-value">0</div>
+                                <div id="watch-best-tile" class="stat-value">0</div>
                             </div>
-                            <div class="stat" title="Current learning rate">
-                                <div class="stat-label">LR</div>
-                                <div id="current-lr" class="stat-value">0.0000</div>
+                            <div class="game-stats">
+                                <div class="stat-label">Moves</div>
+                                <div id="move-count" class="stat-value">0</div>
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <div class="dashboard-panel">
-                    <h3>Performance Charts</h3>
-                    <div class="metrics-grid">
-                        <div class="metrics-container">
-                            <canvas id="reward-chart"></canvas>
-                        </div>
-                        <div class="metrics-container">
-                            <canvas id="max-tile-chart"></canvas>
-                        </div>
-                        <div class="metrics-container">
-                            <canvas id="loss-chart"></canvas>
-                        </div>
-                        <div class="metrics-container">
-                            <canvas id="moves-chart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Watch Panel -->
-        <div id="watch-panel" class="card hidden">
-            <h2>Game Visualization</h2>
-            
-            <div class="dashboard">
-                <div class="dashboard-panel">
-                    <div id="game-board" class="game-board"></div>
                     
-                    <div class="game-info">
-                        <div class="game-stats">
-                            <div class="stat-label">Score</div>
-                            <div id="game-score" class="stat-value">0</div>
-                        </div>
-                        <div class="game-stats">
-                            <div class="stat-label">Best Tile</div>
-                            <div id="best-tile" class="stat-value">0</div>
-                        </div>
-                        <div class="game-stats">
-                            <div class="stat-label">Moves</div>
-                            <div id="move-count" class="stat-value">0</div>
-                        </div>
+                    <div class="dashboard-panel info-panel">
+                        <h3>Agent Decision Making</h3>
+                        <p>The agent uses a sophisticated deep Transformer architecture to process board states. The Transformer directly analyzes tile relationships through multi-head attention mechanisms, capturing complex spatial patterns and game logic.</p>
+                        
+                        <h4>Reward Function Components</h4>
+                        <ul class="info-list">
+                            <li><i class="material-icons">trending_up</i>High tiles: Significant bonus for achieving high-value tiles</li>
+                            <li><i class="material-icons">explore</i>Novelty: Rewards exploration of diverse board configurations</li>
+                            <li><i class="material-icons">access_time</i>Time-dependent scaling: Later moves contribute more to reward</li>
+                            <li><i class="material-icons">grid_on</i>Pattern diversity: Encourages balanced board layouts</li>
+                        </ul>
                     </div>
-                </div>
-                
-                <div class="dashboard-panel">
-                    <h3>Agent Decision Making</h3>
-                    <p>The agent uses a sophisticated deep Transformer architecture to process board states. The Transformer directly analyzes tile relationships through multi-head attention mechanisms, capturing complex spatial patterns and game logic.</p>
-                    
-                    <h4>Simplified Reward Function Components</h4>
-                    <ul>
-                        <li>High tiles: Significant bonus for achieving high-value tiles</li>
-                        <li>Novelty: Rewards exploration of diverse board configurations</li>
-                        <li>Time-dependent scaling: Later moves contribute more to reward</li>
-                    </ul>
                 </div>
             </div>
         </div>
     </div>
 
+    <div class="toast-container" id="toast-container"></div>
+    
     <script src="/static/js/main.js"></script>
 </body>
 </html>
