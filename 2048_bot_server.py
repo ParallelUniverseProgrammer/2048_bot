@@ -694,6 +694,8 @@ def start_training(conn, stop_event, hyperparams=None):
         print("Entering web_train_loop")
         # Disable anomaly detection
         torch.autograd.set_detect_anomaly(False)
+        # Define training start time
+        training_start_time = time.time()
         baseline = 0.0
         total_episodes = 0
         best_avg_reward = -float('inf')
@@ -1229,15 +1231,18 @@ def handle_training_updates(conn):
                         if msg_type == 'stat_update':
                             # Fast path for stats - minimal processing, direct forwarding
                             # Extract the key stats for local tracking
-                            training_data['total_episodes'] = int(data['total_episodes'])
+                            if 'total_episodes' in data:
+                                training_data['total_episodes'] = int(data['total_episodes'])
                             training_data['best_avg_reward'] = max(training_data['best_avg_reward'], 
                                                                 data.get('best_avg_reward', 0))
                             training_data['best_max_tile'] = max(training_data['best_max_tile'], 
                                                                data.get('best_max_tile', 0))
                             
                             # Also update history for chart consistency
-                            training_data['rewards_history'].append(data['avg_batch_reward'])
-                            training_data['max_tile_history'].append(data['batch_max_tile'])
+                            if 'avg_batch_reward' in data:
+                                training_data['rewards_history'].append(data['avg_batch_reward'])
+                            if 'batch_max_tile' in data:
+                                training_data['max_tile_history'].append(data['batch_max_tile'])
                             if 'batch_loss' in data and data['batch_loss'] is not None:
                                 training_data['loss_history'].append(data['batch_loss'])
                             if 'avg_batch_moves' in data:
