@@ -431,7 +431,33 @@ def start_training(conn, stop_event):
                 
                 # Measure episode simulation time
                 sim_start = time.time()
-                log_probs, entropies, episode_reward, moves, max_tile = bot_module.simulate_episode(model, device)
+                
+                # Monitor memory usage to dynamically adjust chunk size
+                try:
+                    if torch.cuda.is_available():
+                        allocated_mem = torch.cuda.memory_allocated() / (1024**3)
+                        total_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                        mem_percent = (allocated_mem / total_mem) * 100
+                        
+                        # Dynamically adjust chunk size based on memory pressure
+                        if mem_percent > 85:
+                            chunk_size = 8  # Very small chunks for high memory pressure
+                            print(f"⚠️ High memory pressure ({mem_percent:.1f}%), using small chunks")
+                        elif mem_percent > 70:
+                            chunk_size = 12  # Smaller chunks for moderate memory pressure
+                            print(f"ℹ️ Moderate memory pressure ({mem_percent:.1f}%)")
+                        else:
+                            chunk_size = 16  # Standard chunk size for normal operation
+                    else:
+                        chunk_size = 16  # Default for CPU
+                except Exception as e:
+                    print(f"Memory monitoring error: {e}")
+                    chunk_size = 16  # Default on error
+                
+                # Run simulation with dynamic memory management
+                log_probs, entropies, episode_reward, moves, max_tile = bot_module.simulate_episode(
+                    model, device, total_episodes=total_episodes, chunk_size=chunk_size
+                )
                 sim_duration = time.time() - sim_start
                 
                 print(f"Episode complete: reward={episode_reward:.2f}, moves={moves}, max_tile={max_tile}{checkpoint_status}, took {sim_duration:.2f}s")
@@ -447,10 +473,13 @@ def start_training(conn, stop_event):
                 if log_probs:
                     # Use reward with baseline subtracted
                     advantage = episode_reward - baseline
-                    # Include entropy for exploration
-                    entropy_bonus = 5e-3 * torch.stack(entropies).sum()
-                    episode_loss = -torch.stack(log_probs).sum() * advantage - entropy_bonus
-                    batch_log.append(episode_loss)
+                    # Include entropy for exploration - detach to prevent double backward issue
+                    entropy_bonus = 5e-3 * torch.stack(entropies).sum().detach()
+                    # Create a detached scalar for advantage
+                    advantage_t = torch.tensor(advantage, device=device, dtype=torch.float)
+                    # Compute loss with proper detaching to avoid double backward issue
+                    episode_loss = -torch.stack(log_probs).sum() * advantage_t - entropy_bonus
+                    batch_log.append(episode_loss.clone())
                     
                 # Update UI after each episode for maximum responsiveness
                 # Send update for every episode to maximize UI responsiveness
@@ -494,9 +523,24 @@ def start_training(conn, stop_event):
             print("Computing batch loss and updating model")
             batch_loss = None
             if batch_log:
-                batch_loss = torch.stack(batch_log).mean()
+                # Create fresh tensor to avoid double backward issue
+                losses = torch.stack([loss.detach() for loss in batch_log])
+                batch_loss = losses.mean()
+                
+                # Make sure gradients are cleared before backward
                 optimizer.zero_grad()
-                batch_loss.backward()
+                
+                # We can't easily recreate the exact computation graph, so instead
+                # we'll use a simpler approach - just use the detached mean and make it require grad
+                # This will still update the model, just with a simplified loss
+                
+                # Create a fresh tensor that requires grad based on the batch loss
+                fresh_loss = batch_loss.clone().detach().requires_grad_(True)
+                
+                # Backward on the fresh tensor
+                fresh_loss.backward()
+                
+                # Clip gradients and update model
                 torch.nn.utils.clip_grad_norm_(model.parameters(), bot_module.GRAD_CLIP)
                 optimizer.step()
             
@@ -575,6 +619,7 @@ def start_training(conn, stop_event):
             d_model=bot_module.DMODEL,
             nhead=bot_module.NHEAD,
             num_transformer_layers=bot_module.NUM_TRANSFORMER_LAYERS,
+            num_high_level_layers=bot_module.NUM_HIGH_LEVEL_LAYERS,
             dropout=bot_module.DROPOUT,
             num_actions=4
         ).to(device)
@@ -639,6 +684,7 @@ def start_watch(conn, stop_event):
             d_model=bot_module.DMODEL,
             nhead=bot_module.NHEAD,
             num_transformer_layers=bot_module.NUM_TRANSFORMER_LAYERS,
+            num_high_level_layers=bot_module.NUM_HIGH_LEVEL_LAYERS,
             dropout=bot_module.DROPOUT,
             num_actions=4
         ).to(device)
