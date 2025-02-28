@@ -1,10 +1,10 @@
 # 2048 Self-Play Bot
 
-A reinforcement learning agent that learns to play the 2048 game through self-play using a hybrid CNN-Transformer architecture and the REINFORCE algorithm.
+A reinforcement learning agent that learns to play the 2048 game through self-play using a deep Transformer architecture and the REINFORCE algorithm.
 
 ## Features
 
-- **Efficient Neural Architecture**: Hybrid CNN-Transformer model that processes board states using both local pattern recognition and global attention
+- **Pure Transformer Architecture**: Deep Transformer model that directly processes board states through sophisticated multi-head attention mechanisms
 - **Sophisticated Reward Function**: Multi-component reward system that considers merge scores, empty cells, high tiles, edge placement, and potential future merges
 - **Smart Move Selection**: Validity masking system that prevents the model from selecting invalid moves
 - **Batch Training**: More stable learning through batch updates
@@ -77,8 +77,8 @@ In console training mode, press 'S' at any time to stop training and save the be
 
 1. **Board Representation**: The 4x4 game board is converted to a tensor where each cell value is represented using log2 (e.g., 2→1, 4→2, etc.)
 
-2. **Neural Network**: A hybrid architecture processes the board:
-   - Embedding layer → CNN with batch normalization → Transformer encoder → Action logits
+2. **Neural Network**: A deep Transformer architecture processes the board:
+   - Embedding layer → Positional encoding → Deep multi-head attention → Advanced token interaction → Action logits
 
 3. **Decision Making**: For each move, the network outputs action probabilities for up/down/left/right, masked to allow only valid moves
 

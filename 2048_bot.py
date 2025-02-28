@@ -3,10 +3,11 @@
 Advanced 2048 Self-Play Training with PyTorch
 
 This script implements a reinforcement learning agent that learns to play the 2048 game
-through self-play using a hybrid CNN-Transformer architecture and the REINFORCE algorithm.
+through self-play using a deep Transformer architecture and the REINFORCE algorithm.
 
 Features:
-- Efficient CNN-Transformer hybrid architecture for board state processing
+- Pure Transformer architecture for sophisticated board state processing
+- Deep multi-head attention mechanisms for complex pattern recognition
 - Sophisticated reward function with multiple heuristic components
 - Validity masking to prevent invalid moves
 - Batch training for more stable learning
@@ -52,11 +53,11 @@ CYCLICAL_LR_BASE = 3e-4        # Reduced base learning rate
 CYCLICAL_LR_MAX = 6e-4         # Reduced max learning rate for more stable learning
 CYCLICAL_LR_STEP_SIZE = 60     # Longer step size for smoother transitions
 
-# Model architecture parameters - increased for higher VRAM usage and better generalization
-DMODEL = 264                   # Adjusted dimensionality to be divisible by number of heads
-NHEAD = 12                     # More attention heads for finer-grained pattern recognition (264/12 = 22)
-NUM_TRANSFORMER_LAYERS = 6     # More transformer layers for deeper reasoning
-DROPOUT = 0.15                 # Slightly increased dropout for better regularization
+# Model architecture parameters - pure Transformer architecture for pattern recognition
+DMODEL = 192                   # Moderate dimensionality for efficient representation
+NHEAD = 8                      # Attention heads for pattern recognition (192/8 = 24)
+NUM_TRANSFORMER_LAYERS = 6     # Moderate transformer depth suitable for 8GB VRAM
+DROPOUT = 0.15                 # Moderate dropout for regularization
 VOCAB_SIZE = 16                # Vocabulary size for tile embeddings (unchanged)
 
 # Reward function hyperparameters - tuned for more stable learning
@@ -337,57 +338,54 @@ def compute_reward(merge_score, board, forced_penalty, move_count):
     reward = max(reward - forced_penalty, 0)
     return reward
 
-# --- Hybrid CNN-Transformer Policy ---
+# --- Pure Transformer Policy (Removed CNN) ---
 class ConvTransformerPolicy(nn.Module):
     def __init__(self, vocab_size=VOCAB_SIZE, d_model=DMODEL, nhead=NHEAD,
                  num_transformer_layers=NUM_TRANSFORMER_LAYERS, dropout=DROPOUT, num_actions=4):
         """
-        Enhanced network architecture with simpler but effective CNN component:
+        Deep Transformer architecture that processes the board state directly:
          - Tile embeddings
-         - CNN feature extraction with residual connections
-         - Layer Normalization and positional embeddings
-         - Transformer encoder with multi-head attention for global context
-         - Value stream and advantage stream (dueling architecture)
-         - Dropout for regularization
+         - Positional embeddings
+         - Deep Transformer encoder with multi-head attention
+         - Specialized attention layers
+         - Dueling advantage architecture
         """
         super().__init__()
+        # Token embeddings for board tiles
         self.embedding = nn.Embedding(vocab_size, d_model)
-        
-        # Enhanced CNN feature extraction with residual connections and wider channels
-        cnn_dims = d_model * 3 // 2  # Increased CNN width by 50%
-        self.conv1 = nn.Conv2d(d_model, cnn_dims, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(cnn_dims)
-        self.conv2 = nn.Conv2d(cnn_dims, cnn_dims, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(cnn_dims)
-        
-        # Additional convolution for deeper feature extraction
-        self.conv3 = nn.Conv2d(cnn_dims, d_model, kernel_size=3, stride=1, padding=1)  # Project back to d_model
-        self.bn3 = nn.BatchNorm2d(d_model)
-        
-        # Extra convolution with dilated kernels for larger receptive field (helps with generalization)
-        self.conv4 = nn.Conv2d(d_model, d_model, kernel_size=3, stride=1, padding=2, dilation=2)
-        self.bn4 = nn.BatchNorm2d(d_model)
         
         # Positional embeddings for the 4x4 grid (16 positions)
         self.pos_embedding = nn.Parameter(torch.zeros(1, GRID_SIZE * GRID_SIZE, d_model))
         
-        self.ln1 = nn.LayerNorm(d_model)
-        self.ln2 = nn.LayerNorm(d_model)
+        # Layer normalization
+        self.ln_pre = nn.LayerNorm(d_model)
+        self.ln_post = nn.LayerNorm(d_model)
+        self.ln_final = nn.LayerNorm(d_model)
         
-        # Enhanced transformer encoder with increased capacity
+        # Main transformer stack - efficient size for 8GB VRAM
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, 
             nhead=nhead,
-            dim_feedforward=d_model*3,  # Significantly increased FFN capacity (50% more)
+            dim_feedforward=d_model*2,  # Moderate feed-forward network
             dropout=dropout, 
             batch_first=True,
-            activation="gelu"  # Switch to GELU for better performance on complex patterns
+            activation="gelu"
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_transformer_layers)
         
-        # Add specialized attention layer specifically for high-value tiles
-        # Ensure num_heads evenly divides embed_dim
-        high_value_heads = 6  # Must divide d_model evenly (264/6 = 44)
+        # Streamlined additional transformer layer for high-level reasoning
+        high_level_encoder = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=d_model*2,
+            dropout=dropout,
+            batch_first=True,
+            activation="gelu"
+        )
+        self.high_level_transformer = nn.TransformerEncoder(high_level_encoder, num_layers=1)
+        
+        # Specialized attention for high-value tiles
+        high_value_heads = nhead // 2  # Must divide d_model evenly
         self.high_value_attn = nn.MultiheadAttention(
             embed_dim=d_model,
             num_heads=high_value_heads,
@@ -395,113 +393,102 @@ class ConvTransformerPolicy(nn.Module):
             batch_first=True
         )
         
-        # Enhanced dueling network architecture with wider layers
-        self.value_stream = nn.Sequential(
-            nn.Linear(d_model, d_model),  # Wider first layer
-            nn.GELU(),  # Switch to GELU for better performance
-            nn.Dropout(dropout),
-            nn.Linear(d_model, d_model//2),
+        # Simplified token interaction layer
+        self.tile_interaction = nn.Sequential(
+            nn.Linear(d_model, d_model),
             nn.GELU(),
-            nn.Linear(d_model//2, 1)
+            nn.Dropout(dropout)
+        )
+        
+        # Simplified dueling network architecture
+        self.value_stream = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model, 1)
         )
         
         self.advantage_stream = nn.Sequential(
-            nn.Linear(d_model, d_model),  # Wider first layer
-            nn.GELU(),  # Switch to GELU for better performance
-            nn.Dropout(dropout),
-            nn.Linear(d_model, d_model//2),
+            nn.Linear(d_model, d_model),
             nn.GELU(),
-            nn.Linear(d_model//2, num_actions)
+            nn.Dropout(dropout),
+            nn.Linear(d_model, num_actions)
         )
         
         # Additional dropout layers
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
+        self.dropout3 = nn.Dropout(dropout)
         
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize network weights using Xavier uniform initialization."""
+        """Initialize network weights using normal and Xavier initialization."""
         nn.init.xavier_uniform_(self.embedding.weight)
-        
-        # Initialize convolutional layers
-        nn.init.xavier_uniform_(self.conv1.weight)
-        nn.init.constant_(self.conv1.bias, 0)
-        nn.init.xavier_uniform_(self.conv2.weight)
-        nn.init.constant_(self.conv2.bias, 0)
-        nn.init.xavier_uniform_(self.conv3.weight)
-        nn.init.constant_(self.conv3.bias, 0)
-        nn.init.xavier_uniform_(self.conv4.weight)
-        nn.init.constant_(self.conv4.bias, 0)
         
         # Initialize positional embeddings
         nn.init.normal_(self.pos_embedding, std=0.02)
+        
+        # Initialize tile interaction weights
+        for layer in self.tile_interaction:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                nn.init.zeros_(layer.bias)
         
         # Initialize dueling network weights
         for module in [self.value_stream, self.advantage_stream]:
             for m in module:
                 if isinstance(m, nn.Linear):
                     nn.init.xavier_uniform_(m.weight)
-                    nn.init.constant_(m.bias, 0)
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         """
-        Enhanced forward pass with improved CNN, specialized attention, and dueling architecture:
+        Transformer-only forward pass with sophisticated attention mechanisms:
           - Input: x of shape (batch, 16) tokens
           - Output: logits of shape (batch, num_actions)
         """
         batch_size = x.size(0)
+        
+        # Embed tokens (board values)
         x = self.embedding(x)  # (batch, 16, d_model)
         
-        # Reshape for 2D convolution
-        x = x.transpose(1, 2).reshape(batch_size, -1, GRID_SIZE, GRID_SIZE)  # (batch, d_model, 4, 4)
-        
-        # First residual block with wider channels
-        identity = F.interpolate(x, scale_factor=1.0, mode='nearest')  # Prepare identity for channel dimension change
-        x = F.gelu(self.bn1(self.conv1(x)))  # Switch to GELU activation
-        x = self.bn2(self.conv2(x))
-        
-        # Modified residual connection (identity has different channel dimensions)
-        # We'll skip direct residual here due to channel mismatch
-        x = F.gelu(x)
-        
-        # Second residual connection with projection back to d_model
-        x = self.bn3(self.conv3(x))
-        
-        # Apply dilated convolution for larger receptive field (captures global patterns)
-        identity = x
-        x = F.gelu(self.bn4(self.conv4(x)))
-        x = x + identity  # Residual connection
-        
-        # Flatten spatial dimensions
-        x = x.reshape(batch_size, -1, GRID_SIZE*GRID_SIZE).transpose(1, 2)  # (batch, 16, d_model)
-        
         # Add positional embeddings and apply layer norm
-        x = self.ln1(x + self.pos_embedding)
+        x = self.ln_pre(x + self.pos_embedding)
         
         # Apply dropout before transformer
         x = self.dropout1(x)
         
-        # Pass through transformer encoder
+        # Process through main transformer encoder stack
         x = self.transformer(x)
         
-        # Apply specialized high-value attention (particularly for 512+ tiles)
-        # This helps model learn special patterns for high-value tiles
-        attn_output, _ = self.high_value_attn(x, x, x)
-        x = x + attn_output  # Residual connection with specialized attention
+        # Apply tile interaction layer - enhance relationships between tiles
+        residual = x
+        x = self.tile_interaction(x)
+        x = x + residual  # Residual connection
         
-        # Global attention-weighted pooling over tokens
+        # Additional high-level reasoning transformer
+        x = self.high_level_transformer(x)
+        
+        # Apply specialized high-value attention
+        attn_output, _ = self.high_value_attn(x, x, x)
+        x = x + attn_output  # Residual connection
+        
+        # Apply layer norm
+        x = self.ln_post(x)
+        
+        # Attention-weighted pooling over tokens
         # This gives more weight to important positions (like corners and high-value tiles)
         attention_weights = torch.softmax(x.mean(dim=-1, keepdim=True), dim=1)
         x = (x * attention_weights).sum(dim=1)  # Weighted pooling
         
-        # Apply second dropout after pooling
+        # Apply dropout
         x = self.dropout2(x)
         
-        # Apply layer norm to pooled representation
-        x = self.ln2(x)
+        # Final layer norm
+        x = self.ln_final(x)
         
-        # Dueling network architecture with enhanced streams
+        # Dueling network architecture
         value = self.value_stream(x)
         advantage = self.advantage_stream(x)
         
