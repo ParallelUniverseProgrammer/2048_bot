@@ -24,7 +24,7 @@ import webbrowser
 from collections import deque
 import torch
 import torch.multiprocessing as mp
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file, jsonify
 from flask_socketio import SocketIO
 import psutil
 import numpy as np
@@ -83,6 +83,124 @@ def get_local_ip():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+# Helper function to format duration nicely
+def format_duration(seconds):
+    """Format a duration in seconds to a human-readable string."""
+    if seconds < 60:
+        return f"{int(seconds)} seconds"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        minutes = int((seconds % 3600) / 60)
+        return f"{hours} hour{'s' if hours != 1 else ''} {minutes} minute{'s' if minutes != 1 else ''}"
+    else:
+        days = int(seconds / 86400)
+        hours = int((seconds % 86400) / 3600)
+        return f"{days} day{'s' if days != 1 else ''} {hours} hour{'s' if hours != 1 else ''}"
+
+@app.route('/checkpoint_info')
+def checkpoint_info():
+    try:
+        # Check if model checkpoint exists
+        if not os.path.exists("2048_model.pt"):
+            return jsonify({"exists": False, "message": "No checkpoint found"})
+        
+        # Get checkpoint file stats
+        stat_info = os.stat("2048_model.pt")
+        
+        # Creation time
+        created_time = stat_info.st_mtime
+        created_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created_time))
+        
+        # Age calculation
+        current_time = time.time()
+        age_seconds = current_time - created_time
+        age_str = format_duration(age_seconds)
+        
+        # File size
+        size_bytes = stat_info.st_size
+        if size_bytes < 1024:
+            size_str = f"{size_bytes} bytes"
+        elif size_bytes < 1024 * 1024:
+            size_str = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+        
+        # Try to extract training time from the model if possible
+        training_time = "Unknown"
+        episodes = "Unknown"
+        best_reward = "Unknown"
+        best_tile = "Unknown"
+        
+        try:
+            # Load the checkpoint to get metadata
+            if torch.cuda.is_available():
+                device = torch.device("cuda")
+            else:
+                device = torch.device("cpu")
+                
+            checkpoint = torch.load("2048_model.pt", map_location=device)
+            
+            # Check if checkpoint has metadata
+            if isinstance(checkpoint, dict) and "metadata" in checkpoint:
+                metadata = checkpoint["metadata"]
+                
+                # Extract training duration if available
+                if "training_duration" in metadata:
+                    training_time = format_duration(metadata["training_duration"])
+                elif "training_duration_formatted" in metadata:
+                    training_time = metadata["training_duration_formatted"]
+                
+                # Extract other metadata
+                if "total_episodes" in metadata:
+                    episodes = str(metadata["total_episodes"])
+                    
+                if "best_avg_reward" in metadata:
+                    best_reward = f"{metadata['best_avg_reward']:.2f}"
+                    
+                if "best_max_tile" in metadata:
+                    best_tile = str(metadata["best_max_tile"])
+        except Exception as e:
+            print(f"Error extracting metadata from checkpoint: {e}")
+            # Continue with default "Unknown" values if metadata extraction fails
+        
+        return jsonify({
+            "exists": True,
+            "created": created_str,
+            "age": age_str,
+            "size": size_str,
+            "training_time": training_time,
+            "episodes": episodes,
+            "best_reward": best_reward,
+            "best_tile": best_tile,
+            "filename": "2048_model.pt"
+        })
+    except Exception as e:
+        print(f"Error getting checkpoint info: {e}")
+        return jsonify({"exists": False, "message": f"Error: {str(e)}"})
+
+@app.route('/download_checkpoint')
+def download_checkpoint():
+    if os.path.exists("2048_model.pt"):
+        return send_file("2048_model.pt", 
+                         as_attachment=True, 
+                         download_name="2048_model.pt")
+    else:
+        return "Checkpoint not found", 404
+
+@app.route('/delete_checkpoint', methods=['POST'])
+def delete_checkpoint():
+    if os.path.exists("2048_model.pt"):
+        try:
+            os.remove("2048_model.pt")
+            return {"success": True, "message": "Checkpoint deleted successfully"}
+        except Exception as e:
+            return {"success": False, "message": f"Error deleting checkpoint: {str(e)}"}
+    else:
+        return {"success": False, "message": "Checkpoint not found"}
 
 # SocketIO event handlers
 @socketio.on('connect')
@@ -761,12 +879,44 @@ def start_training(conn, stop_event, hyperparams=None):
                 best_model_state = model.state_dict()
                 # Save model whenever we get a new best performance
                 print("New best performance - saving model checkpoint")
-                torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+                
+                # Create metadata about training
+                training_duration = time.time() - training_start_time
+                metadata = {
+                    "timestamp": time.time(),
+                    "total_episodes": total_episodes,
+                    "best_avg_reward": float(best_avg_reward),
+                    "best_max_tile": int(best_max_tile),
+                    "training_duration": training_duration,
+                    "training_duration_formatted": format_duration(training_duration)
+                }
+                
+                # Save model with metadata
+                torch.save({
+                    "state_dict": model.state_dict(),
+                    "metadata": metadata
+                }, "2048_model.pt", _use_new_zipfile_serialization=True)
             if batch_max_tile > best_max_tile:
                 best_max_tile = batch_max_tile
                 # Also save model on new best tile
                 print(f"New best tile {best_max_tile} - saving model checkpoint")
-                torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+                
+                # Create metadata about training
+                training_duration = time.time() - training_start_time
+                metadata = {
+                    "timestamp": time.time(),
+                    "total_episodes": total_episodes,
+                    "best_avg_reward": float(best_avg_reward),
+                    "best_max_tile": int(best_max_tile),
+                    "training_duration": training_duration,
+                    "training_duration_formatted": format_duration(training_duration)
+                }
+                
+                # Save model with metadata
+                torch.save({
+                    "state_dict": model.state_dict(),
+                    "metadata": metadata
+                }, "2048_model.pt", _use_new_zipfile_serialization=True)
                 
             recent_max_tiles = max_tile_history[-100:]
             best_tile_rate = (recent_max_tiles.count(best_max_tile) / min(len(recent_max_tiles), 100) * 100
@@ -792,10 +942,29 @@ def start_training(conn, stop_event, hyperparams=None):
             print(f"📝 Periodic save at episode {total_episodes}")
             save_start = time.time()
             try:
+                # Create metadata about training
+                training_duration = time.time() - training_start_time
+                metadata = {
+                    "timestamp": time.time(),
+                    "total_episodes": total_episodes,
+                    "best_avg_reward": float(best_avg_reward),
+                    "best_max_tile": int(best_max_tile),
+                    "training_duration": training_duration,
+                    "training_duration_formatted": format_duration(training_duration)
+                }
+                
+                # Save with optimization setting
                 if bot_module.CHECKPOINT_OPTIMIZATION:
-                    torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+                    torch.save({
+                        "state_dict": model.state_dict(),
+                        "metadata": metadata
+                    }, "2048_model.pt", _use_new_zipfile_serialization=True)
                 else:
-                    torch.save(model.state_dict(), "2048_model.pt")
+                    torch.save({
+                        "state_dict": model.state_dict(),
+                        "metadata": metadata
+                    }, "2048_model.pt")
+                    
                 save_duration = time.time() - save_start
                 print(f"✅ Checkpoint saved in {save_duration:.1f}s")
             except Exception as e:
@@ -803,11 +972,31 @@ def start_training(conn, stop_event, hyperparams=None):
             
         # Save final model when finished
         print("Training loop complete, saving final model")
+        
+        # Create metadata about training
+        training_duration = time.time() - training_start_time
+        metadata = {
+            "timestamp": time.time(),
+            "total_episodes": total_episodes,
+            "best_avg_reward": float(best_avg_reward),
+            "best_max_tile": int(best_max_tile),
+            "training_duration": training_duration,
+            "training_duration_formatted": format_duration(training_duration),
+            "final_save": True
+        }
+        
+        # Save with optimization setting
         if bot_module.CHECKPOINT_OPTIMIZATION:
             print("Using optimized checkpoint saving...")
-            torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+            torch.save({
+                "state_dict": model.state_dict(),
+                "metadata": metadata
+            }, "2048_model.pt", _use_new_zipfile_serialization=True)
         else:
-            torch.save(model.state_dict(), "2048_model.pt")
+            torch.save({
+                "state_dict": model.state_dict(),
+                "metadata": metadata
+            }, "2048_model.pt")
     
     try:
         # Initialize device, model, optimizer, and scheduler
@@ -831,8 +1020,15 @@ def start_training(conn, stop_event, hyperparams=None):
             if os.path.exists("2048_model.pt"):
                 print("Loading existing model for continued training")
                 checkpoint = torch.load("2048_model.pt", map_location=device)
-                # Use non-strict loading to handle architecture changes
-                model.load_state_dict(checkpoint, strict=False)
+                # Check if the checkpoint has the new format (with metadata)
+                if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                    # Use non-strict loading to handle architecture changes
+                    model.load_state_dict(checkpoint["state_dict"], strict=False)
+                    print("Successfully loaded model with metadata")
+                else:
+                    # Legacy format - direct state dict
+                    model.load_state_dict(checkpoint, strict=False)
+                    print("Successfully loaded legacy model format")
                 print("Successfully loaded model for continued training")
         except Exception as e:
             print(f"Warning: Could not load existing model: {e}")
@@ -927,7 +1123,15 @@ def start_watch(conn, stop_event, hyperparams=None):
             try:
                 # Try to load using strict=False first (will load parameters that match)
                 checkpoint = torch.load("2048_model.pt", map_location=device)
-                model.load_state_dict(checkpoint, strict=False)
+                # Check if the checkpoint has the new format (with metadata)
+                if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                    # Use non-strict loading to handle architecture changes
+                    model.load_state_dict(checkpoint["state_dict"], strict=False)
+                    print("Successfully loaded model with metadata")
+                else:
+                    # Legacy format - direct state dict
+                    model.load_state_dict(checkpoint, strict=False)
+                    print("Successfully loaded legacy model format")
                 print("Loaded compatible parameters from checkpoint")
             except Exception as e:
                 print(f"Partial loading issue: {e}")

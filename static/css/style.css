@@ -834,6 +834,158 @@ h3 {
     100% { transform: rotate(360deg); }
 }
 
+/* Checkpoint Management Panel */
+.checkpoint-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    width: 100%;
+}
+
+.checkpoint-loading, .checkpoint-empty, .checkpoint-error, .checkpoint-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    text-align: center;
+}
+
+.checkpoint-loading .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--surface-card);
+    border-top: 4px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 10px;
+}
+
+.checkpoint-empty, .checkpoint-error {
+    color: var(--text-secondary);
+}
+
+.checkpoint-empty i.large, .checkpoint-error i.large {
+    font-size: 48px;
+    margin-bottom: 10px;
+    opacity: 0.5;
+}
+
+.checkpoint-error {
+    color: var(--error-color);
+}
+
+.checkpoint-empty .subtext {
+    font-size: 14px;
+    margin-top: 5px;
+    opacity: 0.7;
+}
+
+.checkpoint-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.checkpoint-info-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+.checkpoint-info-label {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 5px;
+    color: var(--text-secondary);
+}
+
+.checkpoint-info-value {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.checkpoint-info-subvalue {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.checkpoint-actions {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 10px;
+    width: 100%;
+}
+
+.checkpoint-actions .material-button {
+    min-width: 180px;
+}
+
+/* Confirmation Dialog */
+.dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.dialog-content {
+    background-color: var(--surface-card);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    max-width: 480px;
+    overflow: hidden;
+}
+
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dialog-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.dialog-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.dialog-body {
+    padding: 20px 16px;
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
 /* Responsive breakpoints */
 @media (max-width: 900px) {
     .header-content {

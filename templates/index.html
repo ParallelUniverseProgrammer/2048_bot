@@ -46,6 +46,72 @@
                 </div>
             </div>
 
+            <!-- Checkpoint Management Panel -->
+            <div class="card checkpoint-manager">
+                <div class="card-header">
+                    <h2><i class="material-icons">save</i>Checkpoint Management</h2>
+                    <button id="toggle-checkpoint" class="material-button icon-button">
+                        <i class="material-icons">expand_more</i>
+                    </button>
+                </div>
+                <div id="checkpoint-panel" class="checkpoint-panel">
+                    <div id="checkpoint-status-loading" class="checkpoint-loading">
+                        <div class="loading-spinner"></div>
+                        <div>Loading checkpoint information...</div>
+                    </div>
+                    
+                    <div id="checkpoint-status-empty" class="checkpoint-empty hidden">
+                        <i class="material-icons large">folder_open</i>
+                        <div>No checkpoint found</div>
+                        <div class="subtext">Start training to create a checkpoint</div>
+                    </div>
+                    
+                    <div id="checkpoint-status-error" class="checkpoint-error hidden">
+                        <i class="material-icons large">error</i>
+                        <div id="checkpoint-error-message">Error loading checkpoint information</div>
+                    </div>
+                    
+                    <div id="checkpoint-status-loaded" class="checkpoint-status hidden">
+                        <div class="checkpoint-info-grid">
+                            <div class="checkpoint-info-item">
+                                <div class="checkpoint-info-label">Last Saved</div>
+                                <div id="checkpoint-created" class="checkpoint-info-value">-</div>
+                                <div id="checkpoint-age" class="checkpoint-info-subvalue">-</div>
+                            </div>
+                            <div class="checkpoint-info-item">
+                                <div class="checkpoint-info-label">Training Duration</div>
+                                <div id="checkpoint-training-time" class="checkpoint-info-value">-</div>
+                            </div>
+                            <div class="checkpoint-info-item">
+                                <div class="checkpoint-info-label">Episodes</div>
+                                <div id="checkpoint-episodes" class="checkpoint-info-value">-</div>
+                            </div>
+                            <div class="checkpoint-info-item">
+                                <div class="checkpoint-info-label">Best Reward</div>
+                                <div id="checkpoint-reward" class="checkpoint-info-value">-</div>
+                            </div>
+                            <div class="checkpoint-info-item">
+                                <div class="checkpoint-info-label">Best Tile</div>
+                                <div id="checkpoint-best-tile" class="checkpoint-info-value">-</div>
+                            </div>
+                            <div class="checkpoint-info-item">
+                                <div class="checkpoint-info-label">Size</div>
+                                <div id="checkpoint-size" class="checkpoint-info-value">-</div>
+                            </div>
+                        </div>
+                        
+                        <div class="checkpoint-actions">
+                            <a id="download-checkpoint" href="/download_checkpoint" class="material-button primary">
+                                <i class="material-icons">download</i>Download Checkpoint
+                            </a>
+                            <button id="delete-checkpoint" class="material-button danger">
+                                <i class="material-icons">delete</i>Clear Checkpoint
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card system-monitor">
                 <div class="card-header">
                     <h2><i class="material-icons">memory</i>System Resources</h2>
@@ -423,6 +489,23 @@
     </div>
 
     <div class="toast-container" id="toast-container"></div>
+    
+    <!-- Confirmation Dialog -->
+    <div id="confirmation-dialog" class="dialog hidden">
+        <div class="dialog-content">
+            <div class="dialog-header">
+                <h3 id="dialog-title">Confirmation</h3>
+                <button id="dialog-close" class="dialog-close">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <p id="dialog-message">Are you sure you want to proceed?</p>
+            </div>
+            <div class="dialog-footer">
+                <button id="dialog-cancel" class="material-button secondary">Cancel</button>
+                <button id="dialog-confirm" class="material-button danger">Confirm</button>
+            </div>
+        </div>
+    </div>
     
     <script src="/static/js/main.js"></script>
 </body>

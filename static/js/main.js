@@ -63,6 +63,32 @@ const tabButtons = document.querySelectorAll('.tab-button');
 const tabContents = document.querySelectorAll('.tab-content');
 const toastContainer = document.getElementById('toast-container');
 
+// Checkpoint panel elements
+const toggleCheckpoint = document.getElementById('toggle-checkpoint');
+const checkpointPanel = document.getElementById('checkpoint-panel');
+const checkpointStatusLoading = document.getElementById('checkpoint-status-loading');
+const checkpointStatusEmpty = document.getElementById('checkpoint-status-empty');
+const checkpointStatusError = document.getElementById('checkpoint-status-error');
+const checkpointStatusLoaded = document.getElementById('checkpoint-status-loaded');
+const checkpointErrorMessage = document.getElementById('checkpoint-error-message');
+const checkpointCreated = document.getElementById('checkpoint-created');
+const checkpointAge = document.getElementById('checkpoint-age');
+const checkpointTrainingTime = document.getElementById('checkpoint-training-time');
+const checkpointEpisodes = document.getElementById('checkpoint-episodes');
+const checkpointReward = document.getElementById('checkpoint-reward');
+const checkpointBestTile = document.getElementById('checkpoint-best-tile');
+const checkpointSize = document.getElementById('checkpoint-size');
+const downloadCheckpoint = document.getElementById('download-checkpoint');
+const deleteCheckpoint = document.getElementById('delete-checkpoint');
+
+// Confirmation dialog elements
+const confirmationDialog = document.getElementById('confirmation-dialog');
+const dialogTitle = document.getElementById('dialog-title');
+const dialogMessage = document.getElementById('dialog-message');
+const dialogConfirm = document.getElementById('dialog-confirm');
+const dialogCancel = document.getElementById('dialog-cancel');
+const dialogClose = document.getElementById('dialog-close');
+
 // Chart containers
 const rewardChart = document.getElementById('reward-chart').getContext('2d');
 const maxTileChart = document.getElementById('max-tile-chart').getContext('2d');
@@ -1054,6 +1080,80 @@ function updateButtonStates() {
 }
 
 // Initialize on page load
+// Checkpoint management functions
+function loadCheckpointInfo() {
+    // Show loading state
+    checkpointStatusLoading.classList.remove('hidden');
+    checkpointStatusEmpty.classList.add('hidden');
+    checkpointStatusError.classList.add('hidden');
+    checkpointStatusLoaded.classList.add('hidden');
+    
+    // Fetch checkpoint info from server
+    fetch('/checkpoint_info')
+        .then(response => response.json())
+        .then(data => {
+            // Hide loading state
+            checkpointStatusLoading.classList.add('hidden');
+            
+            if (!data.exists) {
+                // Show empty state
+                checkpointStatusEmpty.classList.remove('hidden');
+                return;
+            }
+            
+            // Update checkpoint info
+            checkpointCreated.textContent = data.created;
+            checkpointAge.textContent = data.age + ' ago';
+            checkpointTrainingTime.textContent = data.training_time;
+            checkpointEpisodes.textContent = data.episodes;
+            checkpointReward.textContent = data.best_reward;
+            checkpointBestTile.textContent = data.best_tile;
+            checkpointSize.textContent = data.size;
+            
+            // Show loaded state
+            checkpointStatusLoaded.classList.remove('hidden');
+        })
+        .catch(error => {
+            console.error('Error fetching checkpoint info:', error);
+            // Show error state
+            checkpointStatusLoading.classList.add('hidden');
+            checkpointErrorMessage.textContent = 'Error loading checkpoint information';
+            checkpointStatusError.classList.remove('hidden');
+        });
+}
+
+// Initialize and handle confirmation dialog
+function showConfirmationDialog(title, message, confirmCallback) {
+    // Set dialog content
+    dialogTitle.textContent = title;
+    dialogMessage.textContent = message;
+    
+    // Show dialog
+    confirmationDialog.classList.remove('hidden');
+    
+    // Handle confirm button
+    const handleConfirm = () => {
+        confirmCallback();
+        confirmationDialog.classList.add('hidden');
+        dialogConfirm.removeEventListener('click', handleConfirm);
+        dialogCancel.removeEventListener('click', handleCancel);
+        dialogClose.removeEventListener('click', handleCancel);
+    };
+    
+    // Handle cancel/close buttons
+    const handleCancel = () => {
+        confirmationDialog.classList.add('hidden');
+        dialogConfirm.removeEventListener('click', handleConfirm);
+        dialogCancel.removeEventListener('click', handleCancel);
+        dialogClose.removeEventListener('click', handleCancel);
+    };
+    
+    // Add event listeners
+    dialogConfirm.addEventListener('click', handleConfirm);
+    dialogCancel.addEventListener('click', handleCancel);
+    dialogClose.addEventListener('click', handleCancel);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Load saved theme
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -1073,6 +1173,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Toggle hyperparameters panel
     toggleHyperparams.addEventListener('click', function() {
         toggleSection(hyperparamsContent, this);
+    });
+    
+    // Toggle checkpoint panel and load checkpoint info when opened
+    toggleCheckpoint.addEventListener('click', function() {
+        toggleSection(checkpointPanel, this);
+        
+        // If panel is being opened, fetch checkpoint info
+        if (checkpointPanel.style.maxHeight) {
+            loadCheckpointInfo();
+        }
     });
     
     // Setup tabs
@@ -1105,4 +1215,31 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Open hardware panel by default
     toggleSection(hardwarePanel, toggleHardware);
+    
+    // Add delete checkpoint event listener
+    deleteCheckpoint.addEventListener('click', function() {
+        showConfirmationDialog(
+            'Delete Checkpoint',
+            'Are you sure you want to delete the current checkpoint? This action cannot be undone.',
+            function() {
+                // Send delete request to server
+                fetch('/delete_checkpoint', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Checkpoint deleted successfully', 'success');
+                        loadCheckpointInfo(); // Reload checkpoint info
+                    } else {
+                        showToast('Error: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting checkpoint:', error);
+                    showToast('Error deleting checkpoint', 'error');
+                });
+            }
+        );
+    });
 });
