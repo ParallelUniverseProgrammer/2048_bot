@@ -44,7 +44,7 @@ LR_SCHEDULER_PATIENCE = 80     # Reduced patience for faster adaptation to plate
 LR_SCHEDULER_FACTOR = 0.75     # More aggressive reduction to escape local optima
 BASE_BATCH_SIZE = 20           # Base batch size (will be dynamically adjusted)
 MINI_BATCH_COUNT = 5           # More mini-batches to improve gradient estimation
-MODEL_SAVE_INTERVAL = 200      # Keep same checkpoint frequency
+MODEL_SAVE_INTERVAL = 50       # Changed to save checkpoint every 50 episodes
 
 # Detect available VRAM and scale model accordingly
 def get_available_memory_gb():

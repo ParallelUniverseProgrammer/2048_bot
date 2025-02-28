@@ -57,7 +57,7 @@
                 <div id="checkpoint-panel" class="checkpoint-panel">
                     <div id="checkpoint-status-loading" class="checkpoint-loading">
                         <div class="loading-spinner"></div>
-                        <div>Loading checkpoint information...</div>
+                        <div>Checking for checkpoints...</div>
                     </div>
                     
                     <div id="checkpoint-status-empty" class="checkpoint-empty hidden">
@@ -72,6 +72,16 @@
                     </div>
                     
                     <div id="checkpoint-status-loaded" class="checkpoint-status hidden">
+                        <div class="checkpoint-selector">
+                            <label for="checkpoint-select">Select Checkpoint:</label>
+                            <select id="checkpoint-select" class="material-select">
+                                <!-- Options will be populated dynamically -->
+                            </select>
+                            <button id="refresh-checkpoints" class="material-button icon-button small">
+                                <i class="material-icons">refresh</i>
+                            </button>
+                        </div>
+                        
                         <div class="checkpoint-info-grid">
                             <div class="checkpoint-info-item">
                                 <div class="checkpoint-info-label">Last Saved</div>
@@ -105,7 +115,7 @@
                                 <i class="material-icons">download</i>Download Checkpoint
                             </a>
                             <button id="delete-checkpoint" class="material-button danger">
-                                <i class="material-icons">delete</i>Clear Checkpoint
+                                <i class="material-icons">delete</i>Delete Checkpoint
                             </button>
                         </div>
                     </div>

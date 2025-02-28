@@ -101,21 +101,55 @@ def format_duration(seconds):
         hours = int((seconds % 86400) / 3600)
         return f"{days} day{'s' if days != 1 else ''} {hours} hour{'s' if hours != 1 else ''}"
 
+@app.route('/list_checkpoints')
+def list_checkpoints():
+    """Return a list of all available checkpoints"""
+    try:
+        checkpoints = []
+        
+        # Check if current model exists
+        if os.path.exists("2048_model.pt"):
+            checkpoints.append({
+                "filename": "2048_model.pt",
+                "path": "2048_model.pt",
+                "is_current": True
+            })
+            
+        # Check for archived checkpoints
+        if os.path.exists("checkpoints"):
+            archived_files = [f for f in os.listdir("checkpoints") if f.endswith('.pt')]
+            for filename in sorted(archived_files, reverse=True):  # Sort newest first
+                checkpoints.append({
+                    "filename": filename,
+                    "path": os.path.join("checkpoints", filename),
+                    "is_current": False
+                })
+        
+        return jsonify({
+            "checkpoints": checkpoints
+        })
+    except Exception as e:
+        print(f"Error listing checkpoints: {e}")
+        return jsonify({"error": str(e)})
+
 @app.route('/checkpoint_info')
 def checkpoint_info():
     try:
+        # Get path parameter, default to current model
+        checkpoint_path = request.args.get('path', "2048_model.pt")
+        
         # Check if model checkpoint exists
-        if not os.path.exists("2048_model.pt"):
-            return jsonify({"exists": False, "message": "No checkpoint found"})
+        if not os.path.exists(checkpoint_path):
+            return jsonify({"exists": False, "message": f"Checkpoint {checkpoint_path} not found"})
         
         # Get checkpoint file stats
-        stat_info = os.stat("2048_model.pt")
+        stat_info = os.stat(checkpoint_path)
         
         # Creation time
         created_time = stat_info.st_mtime
         created_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(created_time))
         
-        # Age calculation
+        # Age calculation - using current timestamp for up-to-date age
         current_time = time.time()
         age_seconds = current_time - created_time
         age_str = format_duration(age_seconds)
@@ -142,7 +176,7 @@ def checkpoint_info():
             else:
                 device = torch.device("cpu")
                 
-            checkpoint = torch.load("2048_model.pt", map_location=device)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
             
             # Check if checkpoint has metadata
             if isinstance(checkpoint, dict) and "metadata" in checkpoint:
@@ -176,7 +210,10 @@ def checkpoint_info():
             "episodes": episodes,
             "best_reward": best_reward,
             "best_tile": best_tile,
-            "filename": "2048_model.pt"
+            "filename": os.path.basename(checkpoint_path),
+            "path": checkpoint_path,
+            "timestamp": created_time,
+            "current_time": current_time  # Add current time for client-side time calculations
         })
     except Exception as e:
         print(f"Error getting checkpoint info: {e}")
@@ -184,23 +221,26 @@ def checkpoint_info():
 
 @app.route('/download_checkpoint')
 def download_checkpoint():
-    if os.path.exists("2048_model.pt"):
-        return send_file("2048_model.pt", 
+    checkpoint_path = request.args.get('path', "2048_model.pt")
+    if os.path.exists(checkpoint_path):
+        return send_file(checkpoint_path, 
                          as_attachment=True, 
-                         download_name="2048_model.pt")
+                         download_name=os.path.basename(checkpoint_path))
     else:
-        return "Checkpoint not found", 404
+        return f"Checkpoint {checkpoint_path} not found", 404
 
 @app.route('/delete_checkpoint', methods=['POST'])
 def delete_checkpoint():
-    if os.path.exists("2048_model.pt"):
+    checkpoint_path = request.json.get('path', "2048_model.pt") if request.json else "2048_model.pt"
+    
+    if os.path.exists(checkpoint_path):
         try:
-            os.remove("2048_model.pt")
-            return {"success": True, "message": "Checkpoint deleted successfully"}
+            os.remove(checkpoint_path)
+            return {"success": True, "message": f"Checkpoint {os.path.basename(checkpoint_path)} deleted successfully"}
         except Exception as e:
             return {"success": False, "message": f"Error deleting checkpoint: {str(e)}"}
     else:
-        return {"success": False, "message": "Checkpoint not found"}
+        return {"success": False, "message": f"Checkpoint {checkpoint_path} not found"}
 
 # SocketIO event handlers
 @socketio.on('connect')
@@ -954,6 +994,22 @@ def start_training(conn, stop_event, hyperparams=None):
                     "training_duration": training_duration,
                     "training_duration_formatted": format_duration(training_duration)
                 }
+                
+                # Create a timestamp-based filename for archive
+                timestamp_str = time.strftime("%Y%m%d_%H%M%S", time.localtime(time.time()))
+                archive_filename = f"2048_model_{timestamp_str}.pt"
+                
+                # First, check if the current model exists, if so rename it to archive
+                if os.path.exists("2048_model.pt"):
+                    try:
+                        # Make checkpoints directory if it doesn't exist
+                        os.makedirs("checkpoints", exist_ok=True)
+                        # Copy current model to the archive with timestamp name
+                        import shutil
+                        shutil.copy2("2048_model.pt", os.path.join("checkpoints", archive_filename))
+                        print(f"✅ Archived previous checkpoint to checkpoints/{archive_filename}")
+                    except Exception as e:
+                        print(f"⚠️ Could not archive previous checkpoint: {e}")
                 
                 # Save with optimization setting
                 if bot_module.CHECKPOINT_OPTIMIZATION:

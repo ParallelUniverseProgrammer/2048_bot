@@ -36,7 +36,7 @@ const defaultHyperparams = {
     
     // Training Parameters
     base_batch_size: 20,
-    model_save_interval: 200
+    model_save_interval: 50
 };
 
 // Current hyperparameters (copy of default initially)
@@ -1124,9 +1124,47 @@ function toggleSection(section, button) {
         section.style.maxHeight = null;
         button.querySelector('i').textContent = 'expand_more';
     } else {
-        // Add some extra space for padding
-        section.style.maxHeight = (section.scrollHeight + 20) + 'px';
-        button.querySelector('i').textContent = 'expand_less';
+        // Calculate full height with padding and add extra space
+        // Use requestAnimationFrame to ensure DOM has updated
+        requestAnimationFrame(() => {
+            // Get the active tab content height if this is the hyperparameters section
+            let extraHeight = 100; // Add even more extra space (100px instead of 50px)
+            
+            if (section === hyperparamsContent) {
+                // Get active tab content and add its height
+                const activeTab = document.querySelector('.tab-content.active');
+                if (activeTab) {
+                    // Add extra space for larger tabs (reward tab, architecture tab)
+                    extraHeight = 200; // Significantly more space for hyperparameter tabs
+                }
+            }
+            
+            section.style.maxHeight = (section.scrollHeight + extraHeight) + 'px';
+            button.querySelector('i').textContent = 'expand_less';
+            
+            // Check for dynamic content and adjust height after content loads
+            // This will handle situations where content is loaded asynchronously
+            setTimeout(() => {
+                if (section.scrollHeight > parseInt(section.style.maxHeight) - extraHeight) {
+                    section.style.maxHeight = (section.scrollHeight + extraHeight) + 'px';
+                }
+            }, 200);
+            
+            // For hyperparameters section, add tab change listener once
+            if (section === hyperparamsContent && !section.hasTabListener) {
+                tabButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        // When tab changes, adjust the height after a brief delay
+                        setTimeout(() => {
+                            if (section.style.maxHeight) { // Only if section is open
+                                section.style.maxHeight = (section.scrollHeight + extraHeight) + 'px';
+                            }
+                        }, 50);
+                    });
+                });
+                section.hasTabListener = true;
+            }
+        });
     }
     
     // Force reflow to ensure transition works properly
@@ -1175,37 +1213,157 @@ function updateButtonStates() {
 
 // Initialize on page load
 // Checkpoint management functions
-function loadCheckpointInfo() {
+let checkpointTimestamp = 0;
+let checkpointInfoInterval = null;
+let activeCheckpointPath = "2048_model.pt";
+let availableCheckpoints = [];
+let checkpointLoadingTimeout = null;
+
+// Fallback function to ensure UI doesn't get stuck in loading state
+function ensureCheckpointLoadingComplete() {
+    return setTimeout(() => {
+        // If we're still in the loading state after the timeout, show the empty state
+        if (!checkpointStatusLoading.classList.contains('hidden')) {
+            console.log("Checkpoint loading timed out - showing empty state as fallback");
+            checkpointStatusLoading.classList.add('hidden');
+            checkpointStatusEmpty.classList.remove('hidden');
+            checkpointStatusError.classList.add('hidden');
+            checkpointStatusLoaded.classList.add('hidden');
+        }
+    }, 5000); // 5 second timeout should be sufficient for normal loading
+}
+
+// Fetch the list of available checkpoints
+function loadCheckpointsList() {
+    return fetch('/list_checkpoints')
+        .then(response => response.json())
+        .then(data => {
+            availableCheckpoints = data.checkpoints || [];
+            
+            // Update the checkpoint selection dropdown
+            const select = document.getElementById('checkpoint-select');
+            select.innerHTML = ''; // Clear existing options
+            
+            // If we have checkpoints, we can potentially show the loaded state
+            if (availableCheckpoints.length > 0) {
+                // Don't hide loading state here - we'll do that when the full info loads
+                // But prepare the dropdown
+                checkpointStatusEmpty.classList.add('hidden');
+            } else {
+                // No checkpoints found
+                checkpointStatusLoading.classList.add('hidden');
+                checkpointStatusEmpty.classList.remove('hidden');
+            }
+            
+            // Add options for each checkpoint
+            availableCheckpoints.forEach(checkpoint => {
+                const option = document.createElement('option');
+                option.value = checkpoint.path;
+                
+                let displayName = checkpoint.filename;
+                // For the current model, add a label
+                if (checkpoint.is_current) {
+                    displayName = 'Current: ' + displayName;
+                } else {
+                    // For archived models, make the name more readable
+                    // Extract date/time from filename if available
+                    const match = checkpoint.filename.match(/2048_model_(\d{8})_(\d{6})\.pt/);
+                    if (match) {
+                        const date = match[1];
+                        const time = match[2];
+                        // Format as YYYY-MM-DD HH:MM:SS
+                        const formattedDate = `${date.substring(0, 4)}-${date.substring(4, 6)}-${date.substring(6, 8)}`;
+                        const formattedTime = `${time.substring(0, 2)}:${time.substring(2, 4)}:${time.substring(4, 6)}`;
+                        displayName = `${formattedDate} ${formattedTime}`;
+                    }
+                }
+                
+                option.textContent = displayName;
+                select.appendChild(option);
+            });
+            
+            // Set active checkpoint
+            select.value = activeCheckpointPath;
+            
+            return availableCheckpoints;
+        })
+        .catch(error => {
+            console.error('Error fetching checkpoints list:', error);
+            checkpointStatusLoading.classList.add('hidden');
+            checkpointErrorMessage.textContent = 'Error loading checkpoint list';
+            checkpointStatusError.classList.remove('hidden');
+            return [];
+        });
+}
+
+function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
+    // Update the active checkpoint path
+    activeCheckpointPath = checkpointPath;
+    
     // Show loading state
     checkpointStatusLoading.classList.remove('hidden');
     checkpointStatusEmpty.classList.add('hidden');
     checkpointStatusError.classList.add('hidden');
     checkpointStatusLoaded.classList.add('hidden');
     
-    // Fetch checkpoint info from server
-    fetch('/checkpoint_info')
+    // Set a new timeout for this checkpoint loading operation
+    if (checkpointLoadingTimeout) {
+        clearTimeout(checkpointLoadingTimeout);
+    }
+    checkpointLoadingTimeout = ensureCheckpointLoadingComplete();
+    
+    // First, load the list of checkpoints to populate the dropdown
+    loadCheckpointsList()
+        .then(() => {
+            // Now fetch details about the selected checkpoint
+            return fetch(`/checkpoint_info?path=${encodeURIComponent(checkpointPath)}`);
+        })
         .then(response => response.json())
         .then(data => {
             // Hide loading state
             checkpointStatusLoading.classList.add('hidden');
             
+            // Clear the loading timeout since we resolved successfully
+            if (checkpointLoadingTimeout) {
+                clearTimeout(checkpointLoadingTimeout);
+                checkpointLoadingTimeout = null;
+            }
+            
             if (!data.exists) {
                 // Show empty state
                 checkpointStatusEmpty.classList.remove('hidden');
+                // Clear any existing interval if checkpoint doesn't exist
+                if (checkpointInfoInterval) {
+                    clearInterval(checkpointInfoInterval);
+                    checkpointInfoInterval = null;
+                }
                 return;
             }
             
+            // Store checkpoint timestamp for age calculation
+            checkpointTimestamp = data.timestamp;
+            
             // Update checkpoint info
             checkpointCreated.textContent = data.created;
-            checkpointAge.textContent = data.age + ' ago';
+            updateCheckpointAge();
             checkpointTrainingTime.textContent = data.training_time;
             checkpointEpisodes.textContent = data.episodes;
             checkpointReward.textContent = data.best_reward;
             checkpointBestTile.textContent = data.best_tile;
             checkpointSize.textContent = data.size;
             
+            // Update download link
+            downloadCheckpoint.href = `/download_checkpoint?path=${encodeURIComponent(checkpointPath)}`;
+            
             // Show loaded state
             checkpointStatusLoaded.classList.remove('hidden');
+            
+            // Start a timer to update the age every 30 seconds
+            if (!checkpointInfoInterval) {
+                checkpointInfoInterval = setInterval(updateCheckpointAge, 30000);
+                // Also immediately update checkpoint age on initial load
+                updateCheckpointAge();
+            }
         })
         .catch(error => {
             console.error('Error fetching checkpoint info:', error);
@@ -1213,7 +1371,46 @@ function loadCheckpointInfo() {
             checkpointStatusLoading.classList.add('hidden');
             checkpointErrorMessage.textContent = 'Error loading checkpoint information';
             checkpointStatusError.classList.remove('hidden');
+            
+            // Clear the loading timeout since we reached an error state
+            if (checkpointLoadingTimeout) {
+                clearTimeout(checkpointLoadingTimeout);
+                checkpointLoadingTimeout = null;
+            }
+            
+            // Clear any existing interval on error
+            if (checkpointInfoInterval) {
+                clearInterval(checkpointInfoInterval);
+                checkpointInfoInterval = null;
+            }
         });
+}
+
+// Function to update just the checkpoint age dynamically
+function updateCheckpointAge() {
+    if (checkpointTimestamp) {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const ageSeconds = currentTime - checkpointTimestamp;
+        checkpointAge.textContent = formatDuration(ageSeconds) + ' ago';
+    }
+}
+
+// Helper function to format duration similar to server-side format_duration
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${Math.floor(seconds)} seconds`;
+    } else if (seconds < 3600) {
+        const minutes = Math.floor(seconds / 60);
+        return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    } else if (seconds < 86400) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${hours} hour${hours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    } else {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        return `${days} day${days !== 1 ? 's' : ''} ${hours} hour${hours !== 1 ? 's' : ''}`;
+    }
 }
 
 // Initialize and handle confirmation dialog
@@ -1249,6 +1446,17 @@ function showConfirmationDialog(title, message, confirmCallback) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Set a global fallback timeout to ensure checkpoint loading doesn't get stuck
+    setTimeout(() => {
+        if (checkpointStatusLoading && !checkpointStatusLoading.classList.contains('hidden') &&
+            checkpointStatusEmpty && checkpointStatusEmpty.classList.contains('hidden')) {
+            console.log("Global fallback: Checkpoint UI appears stuck in loading state - forcing empty state display");
+            checkpointStatusLoading.classList.add('hidden');
+            checkpointStatusEmpty.classList.remove('hidden');
+            checkpointStatusError.classList.add('hidden');
+            checkpointStatusLoaded.classList.add('hidden');
+        }
+    }, 10000); // 10 second global fallback
     // Load saved theme
     const savedTheme = localStorage.getItem('theme') || 'dark';
     setTheme(savedTheme);
@@ -1275,8 +1483,135 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // If panel is being opened, fetch checkpoint info
         if (checkpointPanel.style.maxHeight) {
-            loadCheckpointInfo();
+            // First, show a debug message in the loading section
+            checkpointStatusLoading.innerHTML = `
+                <div class="loading-spinner"></div>
+                <div>Checking for checkpoints...</div>
+            `;
+            
+            // Make sure we're showing the loading state
+            checkpointStatusLoading.classList.remove('hidden');
+            checkpointStatusEmpty.classList.add('hidden');
+            checkpointStatusError.classList.add('hidden');
+            checkpointStatusLoaded.classList.add('hidden');
+            
+            // Set a timeout to ensure we don't get stuck in loading state
+            if (checkpointLoadingTimeout) {
+                clearTimeout(checkpointLoadingTimeout);
+            }
+            checkpointLoadingTimeout = ensureCheckpointLoadingComplete();
+            
+            // Directly check for checkpoints list first
+            fetch('/list_checkpoints')
+                .then(response => response.json())
+                .then(data => {
+                    const checkpoints = data.checkpoints || [];
+                    
+                    if (checkpoints.length === 0) {
+                        // No checkpoints found - show empty state
+                        checkpointStatusLoading.classList.add('hidden');
+                        checkpointStatusEmpty.classList.remove('hidden');
+                        // Clear the loading timeout since we resolved successfully
+                        if (checkpointLoadingTimeout) {
+                            clearTimeout(checkpointLoadingTimeout);
+                            checkpointLoadingTimeout = null;
+                        }
+                        return;
+                    }
+                    
+                    // Checkpoints exist, continue with checkpoint info
+                    loadCheckpointInfo();
+                })
+                .catch(error => {
+                    console.error("Error checking checkpoints:", error);
+                    checkpointStatusLoading.classList.add('hidden');
+                    checkpointErrorMessage.textContent = 'Error loading checkpoint list';
+                    checkpointStatusError.classList.remove('hidden');
+                    // Clear the loading timeout since we reached an error state
+                    if (checkpointLoadingTimeout) {
+                        clearTimeout(checkpointLoadingTimeout);
+                        checkpointLoadingTimeout = null;
+                    }
+                });
+        } else {
+            // If panel is being closed, clear the update interval and loading timeout
+            if (checkpointInfoInterval) {
+                clearInterval(checkpointInfoInterval);
+                checkpointInfoInterval = null;
+            }
+            if (checkpointLoadingTimeout) {
+                clearTimeout(checkpointLoadingTimeout);
+                checkpointLoadingTimeout = null;
+            }
         }
+    });
+    
+    // Handle checkpoint selection change
+    document.getElementById('checkpoint-select').addEventListener('change', function() {
+        loadCheckpointInfo(this.value);
+    });
+    
+    // Handle refresh checkpoints button
+    document.getElementById('refresh-checkpoints').addEventListener('click', function() {
+        // First, show a debug message in the loading section
+        checkpointStatusLoading.innerHTML = `
+            <div class="loading-spinner"></div>
+            <div>Refreshing checkpoint information...</div>
+        `;
+        
+        // Make sure we're showing the loading state
+        checkpointStatusLoading.classList.remove('hidden');
+        checkpointStatusEmpty.classList.add('hidden');
+        checkpointStatusError.classList.add('hidden');
+        checkpointStatusLoaded.classList.add('hidden');
+        
+        // Set a timeout to ensure we don't get stuck in loading state
+        if (checkpointLoadingTimeout) {
+            clearTimeout(checkpointLoadingTimeout);
+        }
+        checkpointLoadingTimeout = ensureCheckpointLoadingComplete();
+        
+        // Get the current path if available, otherwise use default
+        const currentPath = document.getElementById('checkpoint-select').value || "2048_model.pt";
+        
+        // Directly check for checkpoints list first
+        fetch('/list_checkpoints')
+            .then(response => response.json())
+            .then(data => {
+                const checkpoints = data.checkpoints || [];
+                
+                if (checkpoints.length === 0) {
+                    // No checkpoints found - show empty state
+                    checkpointStatusLoading.classList.add('hidden');
+                    checkpointStatusEmpty.classList.remove('hidden');
+                    
+                    // Clear the loading timeout since we resolved successfully
+                    if (checkpointLoadingTimeout) {
+                        clearTimeout(checkpointLoadingTimeout);
+                        checkpointLoadingTimeout = null;
+                    }
+                    return;
+                }
+                
+                // Checkpoints exist, use the current path or first checkpoint
+                const pathToUse = checkpoints.find(c => c.path === currentPath) ? 
+                    currentPath : checkpoints[0].path;
+                
+                // Continue with checkpoint info
+                loadCheckpointInfo(pathToUse);
+            })
+            .catch(error => {
+                console.error("Error refreshing checkpoints:", error);
+                checkpointStatusLoading.classList.add('hidden');
+                checkpointErrorMessage.textContent = 'Error refreshing checkpoint list';
+                checkpointStatusError.classList.remove('hidden');
+                
+                // Clear the loading timeout since we reached an error state
+                if (checkpointLoadingTimeout) {
+                    clearTimeout(checkpointLoadingTimeout);
+                    checkpointLoadingTimeout = null;
+                }
+            });
     });
     
     // Setup tabs
@@ -1313,21 +1648,54 @@ document.addEventListener('DOMContentLoaded', function() {
     // Open hardware panel by default
     toggleSection(hardwarePanel, toggleHardware);
     
+    // Immediately check if we have checkpoints (no need to wait for panel toggle)
+    fetch('/list_checkpoints')
+        .then(response => response.json())
+        .then(data => {
+            const checkpoints = data.checkpoints || [];
+            
+            if (checkpoints.length === 0) {
+                // No checkpoints - make sure empty state is ready
+                console.log("No checkpoints available on initial load");
+                // Don't change UI state here, just prepare for when panel is opened
+            } else {
+                console.log(`Found ${checkpoints.length} checkpoints on initial load`);
+            }
+        })
+        .catch(error => {
+            console.error("Error checking for checkpoints on load:", error);
+        });
+    
     // Add delete checkpoint event listener
     deleteCheckpoint.addEventListener('click', function() {
+        const currentCheckpoint = document.getElementById('checkpoint-select').value;
+        const isMainCheckpoint = currentCheckpoint === '2048_model.pt';
+        
+        let message = 'Are you sure you want to delete this checkpoint? This action cannot be undone.';
+        if (isMainCheckpoint) {
+            message = 'Warning: You are deleting the current active checkpoint. This action cannot be undone.';
+        }
+        
         showConfirmationDialog(
             'Delete Checkpoint',
-            'Are you sure you want to delete the current checkpoint? This action cannot be undone.',
+            message,
             function() {
-                // Send delete request to server
+                // Send delete request to server with the checkpoint path
                 fetch('/delete_checkpoint', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        path: currentCheckpoint
+                    })
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
                         showToast('Checkpoint deleted successfully', 'success');
-                        loadCheckpointInfo(); // Reload checkpoint info
+                        // Set active checkpoint to 2048_model.pt if it exists, otherwise the first in the list
+                        loadCheckpointInfo(); // This will reload the list and data
                     } else {
                         showToast('Error: ' + data.message, 'error');
                     }
