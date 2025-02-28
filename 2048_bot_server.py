@@ -52,6 +52,7 @@ training_thread = None
 hardware_monitor_thread = None
 stop_event = threading.Event()
 stop_hardware_monitor = threading.Event()
+current_mode = None  # Will be 'train', 'watch', or None
 training_data = {
     'total_episodes': 0,
     'rewards_history': deque(maxlen=100),
@@ -94,6 +95,36 @@ def handle_connect():
     
     # Start hardware monitoring if not already running
     start_hardware_monitoring()
+    
+    # Always inform the client about the current mode
+    socketio.emit('mode_change', {'mode': current_mode}, room=request.sid)
+    
+    # If training is active, join the training room
+    if training_thread is not None and not stop_event.is_set() and current_mode == 'train':
+        print(f"Adding client {request.sid} to training viewers")
+        # Send current training state to new client
+        if training_data['total_episodes'] > 0:
+            # Send the latest stats to the newly connected client
+            socketio.emit('stats_update', {
+                'total_episodes': training_data['total_episodes'],
+                'avg_batch_reward': training_data['rewards_history'][-1] if training_data['rewards_history'] else 0,
+                'recent_avg_reward': sum(training_data['rewards_history']) / len(training_data['rewards_history']) if training_data['rewards_history'] else 0,
+                'best_avg_reward': training_data['best_avg_reward'],
+                'batch_max_tile': training_data['max_tile_history'][-1] if training_data['max_tile_history'] else 0,
+                'best_max_tile': training_data['best_max_tile'],
+                'avg_batch_moves': training_data['moves_history'][-1] if training_data['moves_history'] else 0,
+                'current_lr': 0.0001  # Default value
+            }, room=request.sid)
+            
+            # Send chart data as well
+            if training_data['rewards_history']:
+                socketio.emit('chart_update', {
+                    'rewards_chart': list(training_data['rewards_history']),
+                    'max_tile_chart': list(training_data['max_tile_history']),
+                    'loss_chart': list(training_data['loss_history']),
+                    'moves_chart': list(training_data['moves_history']),
+                    'episode_base': max(0, training_data['total_episodes'] - len(training_data['rewards_history']))
+                }, room=request.sid)
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -101,7 +132,7 @@ def handle_disconnect():
 
 @socketio.on('start')
 def handle_start(data):
-    global training_process, training_thread
+    global training_process, training_thread, current_mode
     
     # Make sure any existing process is stopped
     if training_process is not None:
@@ -119,6 +150,11 @@ def handle_start(data):
     
     # Start the requested mode
     mode = data.get('mode', 'train')
+    current_mode = mode  # Update the global mode tracker
+    
+    # Notify all clients about the mode change
+    socketio.emit('mode_change', {'mode': mode})
+    
     if mode == 'train':
         # For Windows compatibility, use a thread instead of a process
         # This avoids pickling issues with dynamically loaded modules
@@ -177,7 +213,7 @@ def run_in_thread(target_function, conn, stop_event, hyperparams=None):
 
 @socketio.on('stop')
 def handle_stop():
-    global training_process, training_thread
+    global training_process, training_thread, current_mode
     
     print("Stopping current process...")
     
@@ -186,6 +222,12 @@ def handle_stop():
     
     # Set the stop event
     stop_event.set()
+    
+    # Remember what mode we're stopping
+    stopped_mode = current_mode
+    
+    # Reset the mode
+    current_mode = None
     
     if training_thread is not None:
         # Don't join, just let it terminate naturally
@@ -207,6 +249,8 @@ def handle_stop():
         stop_event.clear()
         # Send notification that the process is fully stopped
         socketio.emit('process_stopped')
+        # Notify all clients about the mode change to None
+        socketio.emit('mode_change', {'mode': None, 'previous_mode': stopped_mode})
     
     stopping_thread = threading.Thread(target=notify_when_stopped)
     stopping_thread.daemon = True
@@ -1002,7 +1046,7 @@ def handle_training_updates(conn):
                             else:
                                 data['current_lr'] = 0.0001
                             
-                            # Stream the data immediately to client
+                            # Stream the data immediately to ALL clients (no room parameter = broadcast)
                             socketio.emit('stats_update', data)
                             
                         elif msg_type == 'chart_update':
@@ -1017,7 +1061,7 @@ def handle_training_updates(conn):
                                     'episode_base': data['episode_base']
                                 }
                                 
-                                # Send chart update to client
+                                # Send chart update to ALL clients
                                 socketio.emit('chart_update', chart_data)
                             except Exception as e:
                                 print(f"Error processing chart data: {e}")
@@ -1025,6 +1069,7 @@ def handle_training_updates(conn):
                         # Legacy support for pre-typed messages
                         else:
                             # Forward with minimal processing for compatibility
+                            # Broadcast to ALL clients
                             socketio.emit('training_update', data)
                         
                     except (EOFError, BrokenPipeError) as e:
@@ -1060,6 +1105,7 @@ def handle_watch_updates(conn):
                     if 'error' in data:
                         # Handle error case
                         print(f"Watch error: {data['error']}")
+                        # Broadcast error to all clients
                         socketio.emit('error', {'message': data['error']})
                         stop_event.set()
                         break
@@ -1070,14 +1116,14 @@ def handle_watch_updates(conn):
                     # Only emit at controlled intervals for smooth UI updates
                     current_time = time.time()
                     if current_time - last_emit_time >= emit_interval:
-                        # Send update to all clients
+                        # Broadcast update to all clients
                         socketio.emit('game_update', buffered_data)
                         last_emit_time = current_time
                         buffered_data = None
                     
                     # If game is over, stop the process
                     if data.get('game_over', False):
-                        # Always emit game over immediately
+                        # Always emit game over immediately to all clients
                         socketio.emit('game_update', data)
                         stop_event.set()
                         break
@@ -1087,6 +1133,7 @@ def handle_watch_updates(conn):
                 # Check if it's time to emit buffered data
                 current_time = time.time()
                 if buffered_data and current_time - last_emit_time >= emit_interval:
+                    # Broadcast to all clients
                     socketio.emit('game_update', buffered_data)
                     last_emit_time = current_time
                     buffered_data = None

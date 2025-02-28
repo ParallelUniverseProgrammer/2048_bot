@@ -843,6 +843,37 @@ socket.on('disconnect', function() {
     showToast('Disconnected from server', 'error');
 });
 
+// Handle mode changes from the server
+socket.on('mode_change', function(data) {
+    console.log('Mode changed to:', data.mode);
+    currentMode = data.mode;
+    
+    // Update UI based on the new mode
+    if (data.mode === 'train') {
+        trainingPanel.classList.remove('hidden');
+        watchPanel.classList.add('hidden');
+    } else if (data.mode === 'watch') {
+        trainingPanel.classList.add('hidden');
+        watchPanel.classList.remove('hidden');
+        // Initialize game board if we're switching to watch mode
+        initGameBoard();
+    } else if (data.mode === null) {
+        // No active mode
+        if (data.previous_mode === 'train') {
+            // We were in training mode, keep showing training panel
+            trainingPanel.classList.remove('hidden');
+            watchPanel.classList.add('hidden');
+        } else if (data.previous_mode === 'watch') {
+            // We were in watch mode, keep showing game panel
+            trainingPanel.classList.add('hidden');
+            watchPanel.classList.remove('hidden');
+        }
+    }
+    
+    // Update button states
+    updateButtonStates();
+});
+
 socket.on('hardware_info', function(data) {
     updateHardwareInfo(data);
 });
