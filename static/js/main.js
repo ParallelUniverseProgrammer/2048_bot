@@ -448,9 +448,6 @@ trainingButton.addEventListener('click', function() {
         
         // Wait briefly for the process to stop completely
         setTimeout(() => {
-            // Show loading indicator for training
-            showLoadingIndicator(true, "Starting training process...");
-            
             // Switch to training mode
             currentMode = 'train';
             socket.emit('start', { mode: 'train' });
@@ -470,8 +467,6 @@ trainingButton.addEventListener('click', function() {
     }
     
     // Standard flow for starting training from stopped state
-    showLoadingIndicator(true, "Starting training process...");
-    
     currentMode = 'train';
     socket.emit('start', { mode: 'train' });
     
@@ -493,9 +488,6 @@ watchButton.addEventListener('click', function() {
         
         // Wait briefly for the process to stop completely
         setTimeout(() => {
-            // Show loading indicator for restart
-            showLoadingIndicator(true, "Restarting game visualization...");
-            
             // Start a new visualization
             socket.emit('start', { mode: 'watch' });
             
@@ -516,9 +508,6 @@ watchButton.addEventListener('click', function() {
         
         // Wait briefly for the process to stop completely
         setTimeout(() => {
-            // Show loading indicator for game visualization
-            showLoadingIndicator(true, "Loading game visualization...");
-            
             // Switch to watch mode
             currentMode = 'watch';
             socket.emit('start', { mode: 'watch' });
@@ -541,8 +530,6 @@ watchButton.addEventListener('click', function() {
     }
     
     // Standard flow for starting watch mode from stopped state
-    showLoadingIndicator(true, "Loading game visualization...");
-    
     currentMode = 'watch';
     socket.emit('start', { mode: 'watch' });
     
@@ -573,9 +560,6 @@ socket.on('hardware_info', function(data) {
 
 // New optimized event handlers
 socket.on('stats_update', function(data) {
-    // Stop loading indicator
-    showLoadingIndicator(false);
-    
     // Make sure we're in training mode
     currentMode = 'train';
     updateButtonStates();
@@ -591,9 +575,6 @@ socket.on('chart_update', function(data) {
 
 // Legacy support for older message format
 socket.on('training_update', function(data) {
-    // Hide loading indicator on first training update
-    showLoadingIndicator(false);
-    
     // Make sure we're in training mode and update button states
     currentMode = 'train';
     updateButtonStates();
@@ -614,9 +595,6 @@ socket.on('training_update', function(data) {
 });
 
 socket.on('game_update', function(data) {
-    // Hide loading indicator on first game update
-    showLoadingIndicator(false);
-    
     // Make sure we're in watch mode and update button states
     currentMode = 'watch';
     updateButtonStates();

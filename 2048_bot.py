@@ -35,17 +35,22 @@ import torch.nn.functional as F
 
 # ---------------- CONFIGURATION PARAMETERS ----------------
 # Learning parameters - adjusted for faster progress
-LEARNING_RATE = 5e-4           # Higher learning rate for faster adaptation
+LEARNING_RATE = 8e-4           # Increased learning rate for faster adaptation
 EARLY_LR_MULTIPLIER = 2.0      # More aggressive multiplier for quicker early learning
 WARMUP_EPISODES = 20           # Shorter warmup period for faster training start
 GRAD_CLIP = 1.2                # Moderate norm for gradient clipping
 LR_SCHEDULER_PATIENCE = 75     # Moderate patience for LR scheduler
 LR_SCHEDULER_FACTOR = 0.75     # Moderate reduction factor
-BATCH_SIZE = 16                # Smaller batch size for more dynamic updates
+BATCH_SIZE = 64                # Smaller batch size for more dynamic updates
 MINI_BATCH_COUNT = 4           # Run multiple mini-batches in parallel for VRAM utilization
-MODEL_SAVE_INTERVAL = 16       # Save model every N episodes (causes the slowdown)
+MODEL_SAVE_INTERVAL = 128      # Save model more frequently (every 8 episodes instead of 16)
 CHECKPOINT_OPTIMIZATION = True # Enable checkpoint optimization
 SKIP_BACKWARD_PASS = False     # For debugging: skip backward pass to isolate slowdowns
+# Cyclical Learning Rate parameters
+USE_CYCLICAL_LR = True         # Enable cyclical learning rate
+CYCLICAL_LR_BASE = 8e-4        # Base learning rate for cyclical LR
+CYCLICAL_LR_MAX = 1.2e-3       # Max learning rate for cyclical LR
+CYCLICAL_LR_STEP_SIZE = 40     # Step size (in episodes) for each half cycle
 
 # Model architecture parameters - increased for higher VRAM usage and better generalization
 DMODEL = 264                   # Adjusted dimensionality to be divisible by number of heads

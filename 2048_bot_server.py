@@ -348,6 +348,7 @@ def start_training(conn, stop_event):
                 # Check if we're approaching checkpoint
                 if self.total_episodes % bot_module.MODEL_SAVE_INTERVAL >= bot_module.MODEL_SAVE_INTERVAL - 2:
                     stat_data['approaching_checkpoint'] = True
+                    print(f"Checkpoint approaching at episode {self.total_episodes}, using MODEL_SAVE_INTERVAL={bot_module.MODEL_SAVE_INTERVAL}")
                     
                 # Send stats immediately
                 self.conn.send(stat_data)
