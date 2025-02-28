@@ -419,8 +419,14 @@ def start_training(conn, stop_event):
             if recent_avg_reward > best_avg_reward:
                 best_avg_reward = recent_avg_reward
                 best_model_state = model.state_dict()
+                # Save model whenever we get a new best performance
+                print("New best performance - saving model checkpoint")
+                torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
             if batch_max_tile > best_max_tile:
                 best_max_tile = batch_max_tile
+                # Also save model on new best tile
+                print(f"New best tile {best_max_tile} - saving model checkpoint")
+                torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
                 
             recent_max_tiles = max_tile_history[-100:]
             best_tile_rate = (recent_max_tiles.count(best_max_tile) / min(len(recent_max_tiles), 100) * 100
@@ -436,10 +442,14 @@ def start_training(conn, stop_event):
                 best_tile_rate, current_lr
             )
         
-        # Save the best model when finished
-        print("Training loop complete, saving model")
-        if best_model_state is not None:
-            torch.save(best_model_state, "2048_model.pt", _use_new_zipfile_serialization=True)
+        # Save the model periodically regardless of performance
+        if total_episodes % 20 == 0:
+            print(f"Periodic save at episode {total_episodes}")
+            torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
+            
+        # Save final model when finished
+        print("Training loop complete, saving final model")
+        torch.save(model.state_dict(), "2048_model.pt", _use_new_zipfile_serialization=True)
     
     try:
         # Initialize device, model, optimizer, and scheduler
@@ -643,6 +653,7 @@ def handle_training_updates(conn):
                         client_data['rewards_chart'] = list(training_data['rewards_history'])
                         client_data['max_tile_chart'] = list(training_data['max_tile_history'])
                         client_data['loss_chart'] = list(training_data['loss_history'])
+                        client_data['moves_chart'] = list(moves_history[-100:]) if 'moves_history' in locals() else []
                         
                         # For debugging:
                         print(f"Chart data sizes: rewards={len(client_data['rewards_chart'])}, tiles={len(client_data['max_tile_chart'])}, loss={len(client_data['loss_chart'])}")

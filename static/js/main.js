@@ -153,6 +153,34 @@ function initCharts() {
             }
         }
     });
+    
+    // Create moves chart
+    charts.moves = new Chart(movesChart, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Episode Length',
+                data: [],
+                borderColor: '#18ffff',
+                backgroundColor: 'rgba(24, 255, 255, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            ...commonOptions,
+            plugins: {
+                ...commonOptions.plugins,
+                title: {
+                    display: true,
+                    text: 'Moves Per Episode',
+                    color: 'rgba(255, 255, 255, 0.87)'
+                }
+            }
+        }
+    });
 }
 
 // Initialize Game Board
@@ -331,18 +359,29 @@ socket.on('training_update', function(data) {
             if (data.loss_chart && i < data.loss_chart.length) {
                 charts.loss.data.datasets[0].data.push(data.loss_chart[i]);
             }
+            
+            // Moves history (episode length)
+            charts.moves.data.labels.push(episodeNum);
+            if (data.moves_chart && i < data.moves_chart.length) {
+                charts.moves.data.datasets[0].data.push(data.moves_chart[i]);
+            } else if (data.avg_batch_moves) {
+                // Fallback if moves_chart isn't available
+                charts.moves.data.datasets[0].data.push(data.avg_batch_moves);
+            }
         }
         
         // Update all charts
         charts.reward.update();
         charts.maxTile.update();
         charts.loss.update();
+        charts.moves.update();
     } else {
         // Fall back to single point update
         console.log("No history arrays found, adding single data points");
         addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, data.recent_avg_reward);
         addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
         addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
+        addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves);
     }
 });
 

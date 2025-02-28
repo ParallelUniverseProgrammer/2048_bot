@@ -101,14 +101,19 @@
                 
                 <div class="dashboard-panel">
                     <h3>Performance Charts</h3>
-                    <div class="metrics-container">
-                        <canvas id="reward-chart"></canvas>
-                    </div>
-                    <div class="metrics-container">
-                        <canvas id="max-tile-chart"></canvas>
-                    </div>
-                    <div class="metrics-container">
-                        <canvas id="loss-chart"></canvas>
+                    <div class="metrics-grid">
+                        <div class="metrics-container">
+                            <canvas id="reward-chart"></canvas>
+                        </div>
+                        <div class="metrics-container">
+                            <canvas id="max-tile-chart"></canvas>
+                        </div>
+                        <div class="metrics-container">
+                            <canvas id="loss-chart"></canvas>
+                        </div>
+                        <div class="metrics-container">
+                            <canvas id="moves-chart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -142,13 +147,11 @@
                     <h3>Agent Decision Making</h3>
                     <p>The agent uses a hybrid CNN-Transformer architecture to process board states. The CNN layers extract local patterns while the Transformer captures global relationships between tiles.</p>
                     
-                    <h4>Reward Function Components</h4>
+                    <h4>Simplified Reward Function Components</h4>
                     <ul>
-                        <li>Merge score: Points earned from combining tiles</li>
-                        <li>Empty cells: Bonus for maintaining open spaces</li>
-                        <li>High tiles: Bonus for achieving high-value tiles</li>
-                        <li>Edge placement: Bonus for keeping high tiles on edges</li>
-                        <li>Potential merges: Bonus for setting up future merges</li>
+                        <li>High tiles: Significant bonus for achieving high-value tiles</li>
+                        <li>Novelty: Rewards exploration of diverse board configurations</li>
+                        <li>Time-dependent scaling: Later moves contribute more to reward</li>
                     </ul>
                 </div>
             </div>
