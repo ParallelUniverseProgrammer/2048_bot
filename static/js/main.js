@@ -77,13 +77,14 @@ function initCharts() {
                 fill: true,
                 tension: 0.4
             }, {
-                label: 'Recent Avg Reward',
+                label: 'Smooth Average',
                 data: [],
                 borderColor: '#03dac6',
                 backgroundColor: 'rgba(3, 218, 198, 0.1)',
                 borderWidth: 2,
                 fill: true,
-                tension: 0.4
+                tension: 0.4,
+                pointRadius: 0
             }]
         },
         options: {
@@ -289,7 +290,52 @@ trainingButton.addEventListener('click', function() {
         return;
     }
     
-    // Show loading indicator until we get the first update
+    // If we're already in training mode, do nothing
+    if (currentMode === 'train') {
+        return;
+    }
+    
+    // If we're in watch mode, stop it first
+    if (currentMode === 'watch') {
+        // Stop current visualization
+        socket.emit('stop');
+        
+        // Show stopping/switching notification
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = 'Stopping game and starting training...';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 500);
+        }, 2000);
+        
+        // Wait briefly for the process to stop completely
+        setTimeout(() => {
+            // Show loading indicator for training
+            showLoadingIndicator(true, "Starting training process...");
+            
+            // Switch to training mode
+            currentMode = 'train';
+            socket.emit('start', { mode: 'train' });
+            
+            trainingPanel.classList.remove('hidden');
+            watchPanel.classList.add('hidden');
+            
+            // Keep buttons disabled as process is running
+            trainingButton.disabled = true;
+            watchButton.disabled = true;
+            stopButton.disabled = false;
+            
+            // Update button states
+            updateButtonStates();
+        }, 1000);
+        
+        return;
+    }
+    
+    // Standard flow for starting training from stopped state
     showLoadingIndicator(true, "Starting training process...");
     
     currentMode = 'train';
@@ -301,6 +347,9 @@ trainingButton.addEventListener('click', function() {
     trainingButton.disabled = true;
     watchButton.disabled = true;
     stopButton.disabled = false;
+    
+    // Update button states
+    updateButtonStates();
 });
 
 watchButton.addEventListener('click', function() {
@@ -319,7 +368,84 @@ watchButton.addEventListener('click', function() {
         return;
     }
     
-    // Show loading indicator until we get the first game update
+    // If we're already in watch mode, simply restart
+    if (currentMode === 'watch') {
+        // Stop current visualization
+        socket.emit('stop');
+        
+        // Show stopping/restarting notification
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = 'Restarting game...';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 500);
+        }, 2000);
+        
+        // Wait briefly for the process to stop completely
+        setTimeout(() => {
+            // Show loading indicator for restart
+            showLoadingIndicator(true, "Restarting game visualization...");
+            
+            // Start a new visualization
+            socket.emit('start', { mode: 'watch' });
+            
+            // Keep watch mode
+            currentMode = 'watch';
+            
+            // Initialize new game board
+            initGameBoard();
+        }, 1000);
+        
+        return;
+    }
+    
+    // If we're in training mode, stop it first
+    if (currentMode === 'train') {
+        // Stop current training
+        socket.emit('stop');
+        
+        // Show stopping/switching notification
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = 'Stopping training and starting game visualization...';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 500);
+        }, 2000);
+        
+        // Wait briefly for the process to stop completely
+        setTimeout(() => {
+            // Show loading indicator for game visualization
+            showLoadingIndicator(true, "Loading game visualization...");
+            
+            // Switch to watch mode
+            currentMode = 'watch';
+            socket.emit('start', { mode: 'watch' });
+            
+            trainingPanel.classList.add('hidden');
+            watchPanel.classList.remove('hidden');
+            
+            // Keep buttons disabled as process is running
+            trainingButton.disabled = true;
+            watchButton.disabled = true;
+            stopButton.disabled = false;
+            
+            // Initialize new game board
+            initGameBoard();
+            
+            // Update button states
+            updateButtonStates();
+        }, 1000);
+        
+        return;
+    }
+    
+    // Standard flow for starting watch mode from stopped state
     showLoadingIndicator(true, "Loading game visualization...");
     
     currentMode = 'watch';
@@ -333,6 +459,9 @@ watchButton.addEventListener('click', function() {
     stopButton.disabled = false;
     
     initGameBoard();
+    
+    // Update button states
+    updateButtonStates();
 });
 
 stopButton.addEventListener('click', function() {
@@ -379,6 +508,10 @@ socket.on('training_update', function(data) {
     
     // Hide loading indicator on first training update
     showLoadingIndicator(false);
+    
+    // Make sure we're in training mode and update button states
+    currentMode = 'train';
+    updateButtonStates();
     
     // Update training statistics display with formatted values
     document.getElementById('avg-batch-reward').textContent = data.avg_batch_reward.toFixed(2);
@@ -434,8 +567,8 @@ socket.on('training_update', function(data) {
                 charts.reward.data.datasets[1].data = [];
             }
             
-            // Apply moving average with 10-episode window
-            const windowSize = 10;
+            // Apply moving average with 15-episode window (1.5x the original 10)
+            const windowSize = 15;
             const startIdx = Math.max(0, i - windowSize + 1);
             const window = charts.reward.data.datasets[0].data.slice(startIdx, i + 1);
             const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
@@ -471,7 +604,7 @@ socket.on('training_update', function(data) {
                     charts.moves.data.datasets[1].data = [];
                 }
                 
-                const windowSize = 10;
+                const windowSize = 15;
                 const startIdx = Math.max(0, i - windowSize + 1);
                 const window = charts.moves.data.datasets[0].data.slice(startIdx, i + 1);
                 const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
@@ -518,7 +651,7 @@ socket.on('training_update', function(data) {
         
         // Calculate smoothed averages for both moves and rewards chart
         if (charts.moves.data.datasets[0].data.length > 0) {
-            const windowSize = Math.min(10, charts.moves.data.datasets[0].data.length);
+            const windowSize = Math.min(15, charts.moves.data.datasets[0].data.length);
             
             // For moves chart
             const currentMovesData = [...charts.moves.data.datasets[0].data, data.avg_batch_moves];
@@ -581,6 +714,10 @@ socket.on('game_update', function(data) {
     // Hide loading indicator on first game update
     showLoadingIndicator(false);
     
+    // Make sure we're in watch mode and update button states
+    currentMode = 'watch';
+    updateButtonStates();
+    
     updateGameBoard(data.board);
     gameScore.textContent = data.score.toFixed(2);
     bestTile.textContent = data.max_tile;
@@ -588,16 +725,16 @@ socket.on('game_update', function(data) {
 });
 
 socket.on('process_stopped', function() {
-    // Re-enable buttons and reset their appearance
-    trainingButton.disabled = false;
-    watchButton.disabled = false;
-    watchButton.style.opacity = "1";
+    // Reset the current mode
+    currentMode = null;
     
+    // Reset stop button
     stopButton.disabled = true;
     stopButton.textContent = "Stop Process";
     stopButton.style.backgroundColor = ""; // Reset to default color
     
-    currentMode = null;
+    // Update all button states
+    updateButtonStates();
     
     // Notify the user that the process has stopped
     const notification = document.createElement('div');
@@ -648,8 +785,51 @@ function showLoadingIndicator(show, message = "Processing...") {
     }
 }
 
+// Function to update button states based on current mode
+function updateButtonStates() {
+    if (currentMode === 'watch') {
+        // Change Watch button to "Restart" with different color
+        watchButton.textContent = "Restart Game";
+        watchButton.classList.add('btn-restart');
+        watchButton.disabled = false;
+        
+        // Keep Training button enabled but with different visual style
+        trainingButton.disabled = false;
+        trainingButton.classList.add('btn-alternate');
+        
+        // Keep Stop button enabled
+        stopButton.disabled = false;
+    } else if (currentMode === 'train') {
+        // Reset Watch button
+        watchButton.textContent = "Watch Gameplay";
+        watchButton.classList.remove('btn-restart');
+        watchButton.disabled = false;
+        watchButton.classList.add('btn-alternate');
+        
+        // Disable Training button
+        trainingButton.disabled = true;
+        trainingButton.classList.remove('btn-alternate');
+        
+        // Keep Stop button enabled
+        stopButton.disabled = false;
+    } else {
+        // Reset all buttons to default state when stopped
+        watchButton.textContent = "Watch Gameplay";
+        watchButton.classList.remove('btn-restart');
+        watchButton.classList.remove('btn-alternate');
+        watchButton.disabled = false;
+        
+        trainingButton.disabled = false;
+        trainingButton.classList.remove('btn-alternate');
+        
+        stopButton.disabled = true;
+    }
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     initCharts();
     stopButton.disabled = true;
+    // Make sure buttons are in correct initial state
+    updateButtonStates();
 });

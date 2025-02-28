@@ -80,6 +80,26 @@ h1 {
     background-color: #18ffff;
 }
 
+.btn-restart {
+    background-color: #f65e3b;
+    color: white;
+}
+
+.btn-restart:hover {
+    background-color: #ff7043;
+}
+
+.btn-alternate {
+    background-color: #424242;
+    color: white;
+    opacity: 0.9;
+}
+
+.btn-alternate:hover {
+    background-color: #616161;
+    opacity: 1;
+}
+
 .hardware-info {
     display: flex;
     flex-wrap: wrap;
