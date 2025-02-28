@@ -162,213 +162,345 @@
                     </div>
                     
                     <div id="learning-tab" class="tab-content active">
-                        <div class="param-grid">
-                            <div class="param-item">
-                                <label for="learning-rate">Learning Rate</label>
-                                <div class="param-control">
-                                    <input type="range" id="learning-rate" min="0.0001" max="0.001" step="0.0001" value="0.0003">
-                                    <input type="number" id="learning-rate-value" min="0.0001" max="0.001" step="0.0001" value="0.0003">
+                        <div class="param-group">
+                            <h3 class="param-group-title">Core Learning Parameters</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="learning-rate" class="param-label">Learning Rate</label>
+                                    <div class="param-tooltip" title="Base learning rate used by the optimizer. Higher values make learning faster but less stable.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="learning-rate" min="0.0001" max="0.001" step="0.0001" value="0.0003">
+                                        <input type="number" id="learning-rate-value" min="0.0001" max="0.001" step="0.0001" value="0.0003">
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="early-lr-mult" class="param-label">Early LR Multiplier</label>
+                                    <div class="param-tooltip" title="Multiplier applied to learning rate during early training phase for faster initial exploration.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="early-lr-mult" min="1" max="3" step="0.1" value="1.8">
+                                        <input type="number" id="early-lr-mult-value" min="1" max="3" step="0.1" value="1.8">
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="warmup-episodes" class="param-label">Warmup Episodes</label>
+                                    <div class="param-tooltip" title="Number of episodes with increased learning rate at the beginning of training.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="warmup-episodes" min="5" max="50" step="1" value="25">
+                                        <input type="number" id="warmup-episodes-value" min="5" max="50" step="1" value="25">
+                                    </div>
                                 </div>
                             </div>
-                            <div class="param-item">
-                                <label for="early-lr-mult">Early LR Multiplier</label>
-                                <div class="param-control">
-                                    <input type="range" id="early-lr-mult" min="1" max="3" step="0.1" value="1.8">
-                                    <input type="number" id="early-lr-mult-value" min="1" max="3" step="0.1" value="1.8">
+                        </div>
+
+                        <div class="param-group">
+                            <h3 class="param-group-title">Optimization Controls</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="grad-clip" class="param-label">Gradient Clip</label>
+                                    <div class="param-tooltip" title="Limits the maximum gradient magnitude to prevent exploding gradients. Higher values allow larger updates.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="grad-clip" min="0.5" max="1.5" step="0.05" value="0.85">
+                                        <input type="number" id="grad-clip-value" min="0.5" max="1.5" step="0.05" value="0.85">
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="warmup-episodes">Warmup Episodes</label>
-                                <div class="param-control">
-                                    <input type="range" id="warmup-episodes" min="5" max="50" step="1" value="25">
-                                    <input type="number" id="warmup-episodes-value" min="5" max="50" step="1" value="25">
+                                <div class="param-item">
+                                    <label for="lr-scheduler-patience" class="param-label">LR Scheduler Patience</label>
+                                    <div class="param-tooltip" title="Number of episodes without improvement before reducing the learning rate.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="lr-scheduler-patience" min="10" max="150" step="5" value="80">
+                                        <input type="number" id="lr-scheduler-patience-value" min="10" max="150" step="5" value="80">
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="grad-clip">Gradient Clip</label>
-                                <div class="param-control">
-                                    <input type="range" id="grad-clip" min="0.5" max="1.5" step="0.05" value="0.85">
-                                    <input type="number" id="grad-clip-value" min="0.5" max="1.5" step="0.05" value="0.85">
-                                </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="lr-scheduler-patience">LR Scheduler Patience</label>
-                                <div class="param-control">
-                                    <input type="range" id="lr-scheduler-patience" min="10" max="150" step="5" value="80">
-                                    <input type="number" id="lr-scheduler-patience-value" min="10" max="150" step="5" value="80">
-                                </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="lr-scheduler-factor">LR Scheduler Factor</label>
-                                <div class="param-control">
-                                    <input type="range" id="lr-scheduler-factor" min="0.5" max="0.95" step="0.05" value="0.75">
-                                    <input type="number" id="lr-scheduler-factor-value" min="0.5" max="0.95" step="0.05" value="0.75">
+                                <div class="param-item">
+                                    <label for="lr-scheduler-factor" class="param-label">LR Scheduler Factor</label>
+                                    <div class="param-tooltip" title="Multiplier to reduce learning rate when patience is exhausted. Lower values mean more aggressive reduction.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="lr-scheduler-factor" min="0.5" max="0.95" step="0.05" value="0.75">
+                                        <input type="number" id="lr-scheduler-factor-value" min="0.5" max="0.95" step="0.05" value="0.75">
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
                     <div id="architecture-tab" class="tab-content">
-                        <div class="param-grid">
-                            <div class="param-item">
-                                <label for="base-dmodel">D-Model Size</label>
-                                <div class="param-control">
-                                    <input type="range" id="base-dmodel" min="96" max="384" step="32" value="192">
-                                    <input type="number" id="base-dmodel-value" min="96" max="384" step="32" value="192">
+                        <div class="param-group">
+                            <h3 class="param-group-title">Transformer Dimensions</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="base-dmodel" class="param-label">D-Model Size</label>
+                                    <div class="param-tooltip" title="Dimension of the model embeddings. Higher values increase model capacity but require more memory. Must be divisible by the number of attention heads.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="base-dmodel" min="96" max="384" step="32" value="192">
+                                        <input type="number" id="base-dmodel-value" min="96" max="384" step="32" value="192">
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="base-nhead" class="param-label">Attention Heads</label>
+                                    <div class="param-tooltip" title="Number of attention heads in transformer layers. D-model size must be divisible by this number.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="base-nhead" min="4" max="16" step="2" value="8">
+                                        <input type="number" id="base-nhead-value" min="4" max="16" step="2" value="8">
+                                    </div>
                                 </div>
                             </div>
-                            <div class="param-item">
-                                <label for="base-nhead">Attention Heads</label>
-                                <div class="param-control">
-                                    <input type="range" id="base-nhead" min="4" max="16" step="2" value="8">
-                                    <input type="number" id="base-nhead-value" min="4" max="16" step="2" value="8">
-                                </div>
+                            <div class="param-warning" id="dimension-warning" style="display: none;">
+                                <i class="material-icons">warning</i>
+                                <span>D-Model size must be divisible by the number of attention heads.</span>
                             </div>
-                            <div class="param-item">
-                                <label for="base-transformer-layers">Transformer Layers</label>
-                                <div class="param-control">
-                                    <input type="range" id="base-transformer-layers" min="2" max="12" step="1" value="6">
-                                    <input type="number" id="base-transformer-layers-value" min="2" max="12" step="1" value="6">
+                        </div>
+
+                        <div class="param-group">
+                            <h3 class="param-group-title">Network Structure</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="base-transformer-layers" class="param-label">Transformer Layers</label>
+                                    <div class="param-tooltip" title="Number of transformer encoder layers. More layers increase capacity but use more memory and compute.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="base-transformer-layers" min="2" max="12" step="1" value="6">
+                                        <input type="number" id="base-transformer-layers-value" min="2" max="12" step="1" value="6">
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="base-high-level-layers">High-Level Layers</label>
-                                <div class="param-control">
-                                    <input type="range" id="base-high-level-layers" min="0" max="4" step="1" value="1">
-                                    <input type="number" id="base-high-level-layers-value" min="0" max="4" step="1" value="1">
+                                <div class="param-item">
+                                    <label for="base-high-level-layers" class="param-label">High-Level Layers</label>
+                                    <div class="param-tooltip" title="Additional layers for high-level board state analysis. Helps with strategic decisions.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="base-high-level-layers" min="0" max="4" step="1" value="1">
+                                        <input type="number" id="base-high-level-layers-value" min="0" max="4" step="1" value="1">
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="base-dropout">Dropout Rate</label>
-                                <div class="param-control">
-                                    <input type="range" id="base-dropout" min="0" max="0.5" step="0.05" value="0.15">
-                                    <input type="number" id="base-dropout-value" min="0" max="0.5" step="0.05" value="0.15">
+                                <div class="param-item">
+                                    <label for="base-dropout" class="param-label">Dropout Rate</label>
+                                    <div class="param-tooltip" title="Dropout probability used for regularization. Higher values prevent overfitting but may slow learning.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="base-dropout" min="0" max="0.5" step="0.05" value="0.15">
+                                        <input type="number" id="base-dropout-value" min="0" max="0.5" step="0.05" value="0.15">
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
                     <div id="reward-tab" class="tab-content">
-                        <div class="param-grid">
-                            <div class="param-item">
-                                <label for="high-tile-bonus">High Tile Bonus</label>
-                                <div class="param-control">
-                                    <input type="range" id="high-tile-bonus" min="1" max="10" step="0.5" value="5.5">
-                                    <input type="number" id="high-tile-bonus-value" min="1" max="10" step="0.5" value="5.5">
+                        <div class="param-group">
+                            <h3 class="param-group-title">Primary Reward Components</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="high-tile-bonus" class="param-label">High Tile Bonus</label>
+                                    <div class="param-tooltip" title="Bonus reward multiplier for achieving high-value tiles.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="high-tile-bonus" min="1" max="10" step="0.5" value="5.5">
+                                        <input type="number" id="high-tile-bonus-value" min="1" max="10" step="0.5" value="5.5">
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="high-tile-threshold" class="param-label">High Tile Threshold</label>
+                                    <div class="param-tooltip" title="Tile value threshold for applying additional high tile bonus.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <select id="high-tile-threshold" class="material-select">
+                                            <option value="128">128</option>
+                                            <option value="256">256</option>
+                                            <option value="512" selected>512</option>
+                                            <option value="1024">1024</option>
+                                            <option value="2048">2048</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="ineffective-penalty" class="param-label">Ineffective Penalty</label>
+                                    <div class="param-tooltip" title="Penalty for moves that don't change the board state or create new tiles.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="ineffective-penalty" min="0" max="0.5" step="0.05" value="0.15">
+                                        <input type="number" id="ineffective-penalty-value" min="0" max="0.5" step="0.05" value="0.15">
+                                    </div>
                                 </div>
                             </div>
-                            <div class="param-item">
-                                <label for="ineffective-penalty">Ineffective Penalty</label>
-                                <div class="param-control">
-                                    <input type="range" id="ineffective-penalty" min="0" max="0.5" step="0.05" value="0.15">
-                                    <input type="number" id="ineffective-penalty-value" min="0" max="0.5" step="0.05" value="0.15">
+                        </div>
+
+                        <div class="param-group">
+                            <h3 class="param-group-title">Strategy Incentives</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="novelty-bonus" class="param-label">Novelty Bonus</label>
+                                    <div class="param-tooltip" title="Bonus for exploring new board states that haven't been seen before.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="novelty-bonus" min="0" max="10" step="0.5" value="4.0">
+                                        <input type="number" id="novelty-bonus-value" min="0" max="10" step="0.5" value="4.0">
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="pattern-diversity-bonus" class="param-label">Pattern Diversity Bonus</label>
+                                    <div class="param-tooltip" title="Bonus for maintaining diverse board patterns and layouts during gameplay.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="pattern-diversity-bonus" min="0" max="5" step="0.5" value="2.0">
+                                        <input type="number" id="pattern-diversity-bonus-value" min="0" max="5" step="0.5" value="2.0">
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="strategy-shift-bonus" class="param-label">Strategy Shift Bonus</label>
+                                    <div class="param-tooltip" title="Bonus for successful adaptation of strategy during gameplay when board conditions change.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="strategy-shift-bonus" min="0" max="3" step="0.1" value="1.0">
+                                        <input type="number" id="strategy-shift-bonus-value" min="0" max="3" step="0.1" value="1.0">
+                                    </div>
                                 </div>
                             </div>
-                            <div class="param-item">
-                                <label for="reward-scaling">Reward Scaling</label>
-                                <div class="param-control">
-                                    <input type="range" id="reward-scaling" min="0.01" max="0.5" step="0.01" value="0.12">
-                                    <input type="number" id="reward-scaling-value" min="0.01" max="0.5" step="0.01" value="0.12">
+                        </div>
+
+                        <div class="param-group">
+                            <h3 class="param-group-title">Scaling Factors</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="reward-scaling" class="param-label">Reward Scaling</label>
+                                    <div class="param-tooltip" title="Global scaling factor applied to all rewards to control learning signal strength.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="reward-scaling" min="0.01" max="0.5" step="0.01" value="0.12">
+                                        <input type="number" id="reward-scaling-value" min="0.01" max="0.5" step="0.01" value="0.12">
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="time-factor-constant">Time Factor</label>
-                                <div class="param-control">
-                                    <input type="range" id="time-factor-constant" min="10" max="100" step="5" value="50">
-                                    <input type="number" id="time-factor-constant-value" min="10" max="100" step="5" value="50">
-                                </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="novelty-bonus">Novelty Bonus</label>
-                                <div class="param-control">
-                                    <input type="range" id="novelty-bonus" min="0" max="10" step="0.5" value="4.0">
-                                    <input type="number" id="novelty-bonus-value" min="0" max="10" step="0.5" value="4.0">
-                                </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="high-tile-threshold">High Tile Threshold</label>
-                                <div class="param-control">
-                                    <select id="high-tile-threshold" class="material-select">
-                                        <option value="128">128</option>
-                                        <option value="256">256</option>
-                                        <option value="512" selected>512</option>
-                                        <option value="1024">1024</option>
-                                        <option value="2048">2048</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="pattern-diversity-bonus">Pattern Diversity Bonus</label>
-                                <div class="param-control">
-                                    <input type="range" id="pattern-diversity-bonus" min="0" max="5" step="0.5" value="2.0">
-                                    <input type="number" id="pattern-diversity-bonus-value" min="0" max="5" step="0.5" value="2.0">
-                                </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="strategy-shift-bonus">Strategy Shift Bonus</label>
-                                <div class="param-control">
-                                    <input type="range" id="strategy-shift-bonus" min="0" max="3" step="0.1" value="1.0">
-                                    <input type="number" id="strategy-shift-bonus-value" min="0" max="3" step="0.1" value="1.0">
+                                <div class="param-item">
+                                    <label for="time-factor-constant" class="param-label">Time Factor</label>
+                                    <div class="param-tooltip" title="Controls how rewards scale with gameplay duration. Higher values increase the importance of later moves.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="time-factor-constant" min="10" max="100" step="5" value="50">
+                                        <input type="number" id="time-factor-constant-value" min="10" max="100" step="5" value="50">
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
                     <div id="exploration-tab" class="tab-content">
-                        <div class="param-grid">
-                            <div class="param-item">
-                                <label for="temperature-annealing">Temperature Annealing</label>
-                                <div class="param-control">
-                                    <div class="toggle-switch">
-                                        <input type="checkbox" id="temperature-annealing" checked>
-                                        <label for="temperature-annealing"></label>
+                        <div class="param-group">
+                            <h3 class="param-group-title">Temperature Control</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="temperature-annealing" class="param-label">Temperature Annealing</label>
+                                    <div class="param-tooltip" title="Enable or disable gradual reduction of temperature over time to transition from exploration to exploitation.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <div class="toggle-switch">
+                                            <input type="checkbox" id="temperature-annealing" checked>
+                                            <label for="temperature-annealing"></label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="initial-temperature" class="param-label">Initial Temperature</label>
+                                    <div class="param-tooltip" title="Starting temperature value. Higher values encourage more exploration and random moves at the beginning.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="initial-temperature" min="0.5" max="2.5" step="0.1" value="1.4">
+                                        <input type="number" id="initial-temperature-value" min="0.5" max="2.5" step="0.1" value="1.4">
+                                    </div>
+                                </div>
+                                <div class="param-item">
+                                    <label for="final-temperature" class="param-label">Final Temperature</label>
+                                    <div class="param-tooltip" title="Target temperature value after annealing. Lower values result in more deterministic selection of moves.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="final-temperature" min="0.5" max="1.5" step="0.1" value="0.8">
+                                        <input type="number" id="final-temperature-value" min="0.5" max="1.5" step="0.1" value="0.8">
                                     </div>
                                 </div>
                             </div>
-                            <div class="param-item">
-                                <label for="initial-temperature">Initial Temperature</label>
-                                <div class="param-control">
-                                    <input type="range" id="initial-temperature" min="0.5" max="2.5" step="0.1" value="1.4">
-                                    <input type="number" id="initial-temperature-value" min="0.5" max="2.5" step="0.1" value="1.4">
-                                </div>
+                            <div class="param-warning" id="temperature-warning" style="display: none;">
+                                <i class="material-icons">warning</i>
+                                <span>Initial temperature should be greater than final temperature for proper annealing.</span>
                             </div>
-                            <div class="param-item">
-                                <label for="final-temperature">Final Temperature</label>
-                                <div class="param-control">
-                                    <input type="range" id="final-temperature" min="0.5" max="1.5" step="0.1" value="0.8">
-                                    <input type="number" id="final-temperature-value" min="0.5" max="1.5" step="0.1" value="0.8">
-                                </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="temperature-decay">Temperature Decay</label>
-                                <div class="param-control">
-                                    <input type="range" id="temperature-decay" min="0.9995" max="0.99999" step="0.00001" value="0.99995">
-                                    <input type="number" id="temperature-decay-value" min="0.9995" max="0.99999" step="0.00001" value="0.99995">
+                        </div>
+
+                        <div class="param-group">
+                            <h3 class="param-group-title">Annealing Schedule</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="temperature-decay" class="param-label">Temperature Decay</label>
+                                    <div class="param-tooltip" title="Rate at which temperature decreases. Values closer to 1.0 mean slower decay and longer exploration.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="temperature-decay" min="0.9995" max="0.99999" step="0.00001" value="0.99995">
+                                        <input type="number" id="temperature-decay-value" min="0.9995" max="0.99999" step="0.00001" value="0.99995">
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
                     <div id="training-tab" class="tab-content">
-                        <div class="param-grid">
-                            <div class="param-item">
-                                <label for="base-batch-size">Batch Size</label>
-                                <div class="param-control">
-                                    <input type="range" id="base-batch-size" min="8" max="32" step="4" value="20">
-                                    <input type="number" id="base-batch-size-value" min="8" max="32" step="4" value="20">
+                        <div class="param-group">
+                            <h3 class="param-group-title">Training Configuration</h3>
+                            <div class="param-grid">
+                                <div class="param-item">
+                                    <label for="base-batch-size" class="param-label">Batch Size</label>
+                                    <div class="param-tooltip" title="Number of episodes to collect before updating model weights. Larger batches provide more stable learning but slower adaptation.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="base-batch-size" min="8" max="32" step="4" value="20">
+                                        <input type="number" id="base-batch-size-value" min="8" max="32" step="4" value="20">
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="param-item">
-                                <label for="model-save-interval">Save Interval (episodes)</label>
-                                <div class="param-control">
-                                    <input type="range" id="model-save-interval" min="50" max="500" step="50" value="200">
-                                    <input type="number" id="model-save-interval-value" min="50" max="500" step="50" value="200">
+                                <div class="param-item">
+                                    <label for="model-save-interval" class="param-label">Save Interval (episodes)</label>
+                                    <div class="param-tooltip" title="Number of episodes between checkpoint saves. More frequent saves provide better recovery points but use more disk space.">
+                                        <i class="material-icons">help_outline</i>
+                                    </div>
+                                    <div class="param-control">
+                                        <input type="range" id="model-save-interval" min="50" max="500" step="50" value="200">
+                                        <input type="number" id="model-save-interval-value" min="50" max="500" step="50" value="200">
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
                     <div class="param-actions">
+                        <div id="global-warning" class="global-param-warning" style="display: none;">
+                            <i class="material-icons">error_outline</i>
+                            <span id="global-warning-text">Some parameter values are invalid. Please check the highlighted warnings.</span>
+                        </div>
                         <button id="apply-hyperparams" class="material-button primary">Apply</button>
                         <button id="reset-hyperparams" class="material-button secondary">Reset to Defaults</button>
                     </div>

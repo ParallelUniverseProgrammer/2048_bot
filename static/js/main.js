@@ -175,12 +175,23 @@ function setupRangeInput(inputId, paramName) {
     slider.addEventListener('input', function() {
         valueInput.value = this.value;
         hyperparams[paramName] = parseFloat(this.value);
+        validateHyperparameters();
     });
     
     // Update slider when number input changes
     valueInput.addEventListener('input', function() {
-        slider.value = this.value;
-        hyperparams[paramName] = parseFloat(this.value);
+        const value = parseFloat(this.value);
+        // Ensure value is within min/max bounds
+        const min = parseFloat(this.min);
+        const max = parseFloat(this.max);
+        
+        if (!isNaN(value)) {
+            const boundedValue = Math.max(min, Math.min(max, value));
+            slider.value = boundedValue;
+            this.value = boundedValue;
+            hyperparams[paramName] = boundedValue;
+            validateHyperparameters();
+        }
     });
     
     // Initialize with default value
@@ -198,6 +209,7 @@ function setupSelectInput(inputId, paramName) {
     
     select.addEventListener('change', function() {
         hyperparams[paramName] = parseInt(this.value);
+        validateHyperparameters();
     });
     
     // Initialize with default value
@@ -214,10 +226,63 @@ function setupToggleInput(inputId, paramName) {
     
     toggle.addEventListener('change', function() {
         hyperparams[paramName] = this.checked;
+        validateHyperparameters();
     });
     
     // Initialize with default value
     toggle.checked = defaultHyperparams[paramName];
+}
+
+// Validate hyperparameters for compatibility and correctness
+function validateHyperparameters() {
+    const dimensionWarning = document.getElementById('dimension-warning');
+    const temperatureWarning = document.getElementById('temperature-warning');
+    const globalWarning = document.getElementById('global-warning');
+    const globalWarningText = document.getElementById('global-warning-text');
+    const applyButton = document.getElementById('apply-hyperparams');
+    
+    let hasErrors = false;
+    let warningMessages = [];
+    
+    // Check if dmodel is divisible by number of heads
+    const dmodel = hyperparams.base_dmodel;
+    const nhead = hyperparams.base_nhead;
+    
+    if (dmodel % nhead !== 0) {
+        dimensionWarning.style.display = 'flex';
+        hasErrors = true;
+        warningMessages.push(`D-Model (${dmodel}) must be divisible by number of heads (${nhead})`);
+    } else {
+        dimensionWarning.style.display = 'none';
+    }
+    
+    // Check temperature parameters when annealing is enabled
+    if (hyperparams.use_temperature_annealing) {
+        const initialTemp = hyperparams.initial_temperature;
+        const finalTemp = hyperparams.final_temperature;
+        
+        if (initialTemp <= finalTemp) {
+            temperatureWarning.style.display = 'flex';
+            hasErrors = true;
+            warningMessages.push(`Initial temperature (${initialTemp}) should be greater than final temperature (${finalTemp})`);
+        } else {
+            temperatureWarning.style.display = 'none';
+        }
+    } else {
+        temperatureWarning.style.display = 'none';
+    }
+    
+    // Update global warning
+    if (hasErrors) {
+        globalWarning.style.display = 'flex';
+        globalWarningText.textContent = warningMessages.join('; ');
+        applyButton.disabled = true;
+    } else {
+        globalWarning.style.display = 'none';
+        applyButton.disabled = false;
+    }
+    
+    return !hasErrors;
 }
 
 // Reset hyperparameters to defaults
@@ -242,11 +307,40 @@ function resetHyperparameters() {
         }
     }
     
+    // Run validation on the default values
+    validateHyperparameters();
+    
     showToast('Hyperparameters reset to defaults', 'info');
 }
 
 // Apply hyperparameters to the model
 function applyHyperparameters() {
+    // Validate before sending
+    if (!validateHyperparameters()) {
+        showToast('Cannot apply hyperparameters. Please fix validation errors first.', 'error');
+        return;
+    }
+    
+    // If we have D-model and nhead, ensure one is adjusted if needed
+    const dmodel = hyperparams.base_dmodel;
+    const nhead = hyperparams.base_nhead;
+    
+    if (dmodel % nhead !== 0) {
+        // Find the closest multiple of nhead
+        const adjustedDmodel = Math.ceil(dmodel / nhead) * nhead;
+        hyperparams.base_dmodel = adjustedDmodel;
+        
+        // Update UI
+        if (hyperparamControls.base_dmodel.slider) {
+            hyperparamControls.base_dmodel.slider.value = adjustedDmodel;
+        }
+        if (hyperparamControls.base_dmodel.valueInput) {
+            hyperparamControls.base_dmodel.valueInput.value = adjustedDmodel;
+        }
+        
+        showToast(`Adjusted D-Model to ${adjustedDmodel} for compatibility with ${nhead} heads`, 'warning');
+    }
+    
     // Send hyperparameters to the server
     socket.emit('set_hyperparams', hyperparams);
     
@@ -1202,6 +1296,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup hyperparameter controls
     setupHyperparamControls();
+    
+    // Run validation after loading hyperparameters
+    validateHyperparameters();
     
     // Apply and reset hyperparameters buttons
     applyHyperparamsButton.addEventListener('click', applyHyperparameters);
