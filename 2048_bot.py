@@ -51,19 +51,12 @@ NUM_TRANSFORMER_LAYERS = 4     # Increased number of transformer layers for more
 DROPOUT = 0.12                 # Moderate dropout for regularization
 VOCAB_SIZE = 16                # Vocabulary size for tile embeddings (unchanged)
 
-# Reward function hyperparameters - tuned for exploration of novel strategies
-MERGE_SCORE_WEIGHT = 0.5       # Lower immediate score importance to favor strategic exploration
-EMPTY_BONUS = 5.0              # Higher bonus for maintaining empty cells
-HIGH_TILE_BONUS = 4.0          # Much higher bonus for achieving high tiles
-EDGE_BONUS = 2.5               # Reduced edge alignment bonus to allow experimentation
-CENTER_PENALTY = 1.5           # Reduced center penalty to encourage more varied board positions
+# Reward function hyperparameters - simplified for exploration and high tile focus
+HIGH_TILE_BONUS = 6.0          # Significant bonus for achieving high tiles
 INEFFECTIVE_PENALTY = 0.5      # Lower penalty for forced moves to encourage risk-taking
-POTENTIAL_MERGE_WEIGHT = 1.2   # Much higher weight for potential merges to incentivize chain planning
 REWARD_SCALING = 0.15          # Increased reward scaling for more decisive feedback
-TIME_FACTOR_CONSTANT = 50.0    # More aggressive time-dependent bonus for longer-term planning
-NOVELTY_BONUS = 2.0            # New parameter to reward novel board configurations
-MONOTONICITY_WEIGHT = 1.8      # New parameter to reward monotonic rows/columns
-SMOOTHNESS_WEIGHT = 1.5        # New parameter to reward adjacent tiles with similar values
+TIME_FACTOR_CONSTANT = 50.0    # Time-dependent bonus for longer-term planning
+NOVELTY_BONUS = 5.0            # Substantially increased reward for novel board configurations
 
 # Display settings
 DISPLAY_DELAY = 0.001          # Faster refresh rate for training display
@@ -239,80 +232,6 @@ def board_to_tensor(board, device):
     return torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
 
 # --- Reward Function ---
-def compute_monotonicity(board):
-    """
-    Evaluate how monotonic the board is (increasing or decreasing along rows and columns).
-    Higher values are better, indicating the board is more organized.
-    """
-    monotonicity_score = 0
-    
-    # Check rows for monotonicity (both increasing and decreasing)
-    for row in board:
-        # Check increasing
-        inc_score = 0
-        for i in range(GRID_SIZE - 1):
-            if row[i] <= row[i+1] and row[i] != 0:
-                inc_score += 1
-        
-        # Check decreasing
-        dec_score = 0
-        for i in range(GRID_SIZE - 1):
-            if row[i] >= row[i+1] and row[i+1] != 0:
-                dec_score += 1
-        
-        # Take the better of the two directions
-        monotonicity_score += max(inc_score, dec_score)
-    
-    # Check columns for monotonicity
-    for j in range(GRID_SIZE):
-        column = [board[i][j] for i in range(GRID_SIZE)]
-        
-        # Check increasing
-        inc_score = 0
-        for i in range(GRID_SIZE - 1):
-            if column[i] <= column[i+1] and column[i] != 0:
-                inc_score += 1
-        
-        # Check decreasing
-        dec_score = 0
-        for i in range(GRID_SIZE - 1):
-            if column[i] >= column[i+1] and column[i+1] != 0:
-                dec_score += 1
-        
-        # Take the better of the two directions
-        monotonicity_score += max(inc_score, dec_score)
-    
-    return monotonicity_score
-
-def compute_smoothness(board):
-    """
-    Evaluate how smooth the board is (adjacent tiles have similar values).
-    Higher values indicate a smoother board with fewer value jumps.
-    """
-    smoothness = 0
-    
-    # Check rows
-    for i in range(GRID_SIZE):
-        for j in range(GRID_SIZE - 1):
-            if board[i][j] != 0 and board[i][j+1] != 0:
-                # Calculate ratio of smaller to larger value (1.0 = identical)
-                min_val = min(board[i][j], board[i][j+1])
-                max_val = max(board[i][j], board[i][j+1])
-                ratio = min_val / max_val if max_val > 0 else 0
-                smoothness += ratio
-    
-    # Check columns
-    for j in range(GRID_SIZE):
-        for i in range(GRID_SIZE - 1):
-            if board[i][j] != 0 and board[i+1][j] != 0:
-                # Calculate ratio of smaller to larger value (1.0 = identical)
-                min_val = min(board[i][j], board[i+1][j])
-                max_val = max(board[i][j], board[i+1][j])
-                ratio = min_val / max_val if max_val > 0 else 0
-                smoothness += ratio
-    
-    return smoothness
-
 def compute_novelty(board):
     """
     Evaluate how "interestingly" the tiles are arranged.
@@ -341,39 +260,18 @@ def compute_novelty(board):
 
 def compute_reward(merge_score, board, forced_penalty, move_count):
     """
-    Enhanced reward function to encourage exploration of novel strategies.
-    New factors:
-      - Monotonicity: rewards organized boards with increasing/decreasing sequences
-      - Smoothness: rewards boards where adjacent tiles have similar values
-      - Novelty: rewards unusual board configurations to break out of strategy ruts
+    Simplified reward function focused on exploration and high tile achievement.
+    Only rewards:
+      - High tile bonus: encourages achieving higher value tiles
+      - Novelty: rewards unusual board configurations to encourage exploration
     """
-    empty_count = sum(cell == 0 for row in board for cell in row)
-    bonus_empty = empty_count * EMPTY_BONUS
     max_tile = max(max(row) for row in board)
-    bonus_high = math.log2(max_tile) * HIGH_TILE_BONUS if max_tile > 0 else 0
-
-    max_tile_positions = [(i, j) for i in range(GRID_SIZE) for j in range(GRID_SIZE) if board[i][j] == max_tile]
-    edge_count = sum(1 for i, j in max_tile_positions if i == 0 or i == GRID_SIZE - 1 or j == 0 or j == GRID_SIZE - 1)
-    bonus_edge = edge_count * EDGE_BONUS - (len(max_tile_positions) - edge_count) * CENTER_PENALTY
-
-    potential_merges = count_potential_merges(board)
-    potential_merge_bonus = potential_merges * POTENTIAL_MERGE_WEIGHT
+    bonus_high = math.log2(max_tile) * HIGH_TILE_BONUS * 1.5 if max_tile > 0 else 0
     
-    # Calculate new reward components
-    monotonicity = compute_monotonicity(board) * MONOTONICITY_WEIGHT
-    smoothness = compute_smoothness(board) * SMOOTHNESS_WEIGHT
-    novelty = compute_novelty(board) * NOVELTY_BONUS
+    novelty = compute_novelty(board) * NOVELTY_BONUS * 3.0
     
-    # Combine all reward components
-    base_reward = (merge_score * MERGE_SCORE_WEIGHT +
-                  bonus_empty +
-                  bonus_high +
-                  bonus_edge +
-                  potential_merge_bonus +
-                  monotonicity +
-                  smoothness +
-                  novelty -
-                  forced_penalty)
+    # Combine only novelty and high tile components
+    base_reward = bonus_high + novelty
     
     # Introduce time-dependent bonus: later moves contribute more
     time_factor = 1.0 + (move_count / TIME_FACTOR_CONSTANT)
@@ -385,9 +283,9 @@ class ConvTransformerPolicy(nn.Module):
     def __init__(self, vocab_size=VOCAB_SIZE, d_model=DMODEL, nhead=NHEAD,
                  num_transformer_layers=NUM_TRANSFORMER_LAYERS, dropout=DROPOUT, num_actions=4):
         """
-        Enhanced network architecture:
+        Enhanced network architecture with simpler but effective CNN component:
          - Tile embeddings
-         - Multiple convolutional layers with residual connections
+         - CNN feature extraction with residual connections
          - Layer Normalization and positional embeddings
          - Transformer encoder with multi-head attention for global context
          - Value stream and advantage stream (dueling architecture)
@@ -402,17 +300,21 @@ class ConvTransformerPolicy(nn.Module):
         self.conv2 = nn.Conv2d(d_model, d_model, kernel_size=3, stride=1, padding=1)
         self.bn2 = nn.BatchNorm2d(d_model)
         
+        # Additional convolution for deeper feature extraction
+        self.conv3 = nn.Conv2d(d_model, d_model, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(d_model)
+        
         # Positional embeddings for the 4x4 grid (16 positions)
         self.pos_embedding = nn.Parameter(torch.zeros(1, GRID_SIZE * GRID_SIZE, d_model))
         
         self.ln1 = nn.LayerNorm(d_model)
         self.ln2 = nn.LayerNorm(d_model)
         
-        # Transformer encoder with balanced capability
+        # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, 
             nhead=nhead,
-            dim_feedforward=d_model*2,  # Moderate FFN for balanced capacity/speed
+            dim_feedforward=d_model*2,  # Increased FFN capacity
             dropout=dropout, 
             batch_first=True
         )
@@ -446,6 +348,8 @@ class ConvTransformerPolicy(nn.Module):
         nn.init.constant_(self.conv1.bias, 0)
         nn.init.xavier_uniform_(self.conv2.weight)
         nn.init.constant_(self.conv2.bias, 0)
+        nn.init.xavier_uniform_(self.conv3.weight)
+        nn.init.constant_(self.conv3.bias, 0)
         
         # Initialize positional embeddings
         nn.init.normal_(self.pos_embedding, std=0.02)
@@ -459,21 +363,26 @@ class ConvTransformerPolicy(nn.Module):
 
     def forward(self, x):
         """
-        Enhanced forward pass with residual connections and dueling architecture:
+        Enhanced forward pass with deeper CNN and dueling architecture:
           - Input: x of shape (batch, 16) tokens
           - Output: logits of shape (batch, num_actions)
         """
         batch_size = x.size(0)
         x = self.embedding(x)  # (batch, 16, d_model)
         
-        # Reshape for 2D convolution - use memory-efficient operations
+        # Reshape for 2D convolution
         x = x.transpose(1, 2).reshape(batch_size, -1, GRID_SIZE, GRID_SIZE)  # (batch, d_model, 4, 4)
         
-        # Apply convolutional layers with residual connection - simplified for faster execution
+        # First residual block
         identity = x
-        x = F.relu(self.bn1(self.conv1(x)), inplace=True)  # Use inplace ReLU for memory efficiency
+        x = F.relu(self.bn1(self.conv1(x)), inplace=True)
         x = self.bn2(self.conv2(x))
-        x = F.relu(x + identity, inplace=True)  # Residual connection with inplace activation
+        x = F.relu(x + identity, inplace=True)  # Residual connection
+        
+        # Second residual connection with third conv layer
+        identity = x
+        x = F.relu(self.bn3(self.conv3(x)), inplace=True)
+        x = x + identity  # Another residual connection
         
         # Flatten spatial dimensions
         x = x.reshape(batch_size, -1, GRID_SIZE*GRID_SIZE).transpose(1, 2)  # (batch, 16, d_model)

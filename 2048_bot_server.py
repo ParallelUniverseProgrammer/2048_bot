@@ -374,10 +374,18 @@ def start_training(conn, stop_event):
                                        if rewards_history else 0.0)
                     
                     print(f"Sending update to UI: episodes={total_episodes}, reward={current_avg_reward:.2f}")
+                    # For debugging
+                    print(f"Episode batch so far: {len(batch_log)}/{bot_module.BATCH_SIZE}")
+                    
+                    # Create a dummy batch loss to ensure loss history is updated
+                    current_batch_loss = 0.0
+                    if batch_log:
+                        current_batch_loss = sum(loss.item() for loss in batch_log) / len(batch_log)
+                    
                     data_collector.update(
                         current_avg_reward, recent_avg_reward, best_avg_reward,
                         batch_moves_sum / min(total_episodes, bot_module.BATCH_SIZE), batch_max_tile, best_max_tile,
-                        0.0,  # placeholder loss
+                        current_batch_loss,  # Use actual loss when available
                         total_episodes, rewards_history, moves_history, max_tile_history,
                         0.0, current_lr
                     )
@@ -628,9 +636,20 @@ def handle_training_updates(conn):
                         training_data['best_avg_reward'] = max(training_data['best_avg_reward'], data['best_avg_reward'])
                         training_data['best_max_tile'] = max(training_data['best_max_tile'], data['best_max_tile'])
                         
+                        # Create a formatted version for the client with chart data
+                        client_data = data.copy()
+                        
+                        # Add history arrays for charts
+                        client_data['rewards_chart'] = list(training_data['rewards_history'])
+                        client_data['max_tile_chart'] = list(training_data['max_tile_history'])
+                        client_data['loss_chart'] = list(training_data['loss_history'])
+                        
+                        # For debugging:
+                        print(f"Chart data sizes: rewards={len(client_data['rewards_chart'])}, tiles={len(client_data['max_tile_chart'])}, loss={len(client_data['loss_chart'])}")
+                        
                         # Immediately send the update to the client
                         print("Emitting training update to clients")
-                        socketio.emit('training_update', data)
+                        socketio.emit('training_update', client_data)
                         
                     except (EOFError, BrokenPipeError) as e:
                         print(f"Pipe error: {e}")

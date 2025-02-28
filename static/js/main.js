@@ -285,6 +285,8 @@ socket.on('hardware_info', function(data) {
 });
 
 socket.on('training_update', function(data) {
+    console.log("Received training update:", data);
+    
     // Update training statistics display
     document.getElementById('avg-batch-reward').textContent = data.avg_batch_reward.toFixed(2);
     document.getElementById('recent-avg-reward').textContent = data.recent_avg_reward.toFixed(2);
@@ -296,10 +298,52 @@ socket.on('training_update', function(data) {
     document.getElementById('current-lr').textContent = data.current_lr.toExponential(4);
     document.getElementById('total-episodes').textContent = data.total_episodes;
     
-    // Update charts
-    addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, data.recent_avg_reward);
-    addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
-    addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
+    // Update charts with history arrays if available
+    if (data.rewards_chart && data.rewards_chart.length > 0) {
+        console.log(`Updating charts with ${data.rewards_chart.length} data points`);
+        
+        // Clear existing data
+        charts.reward.data.labels = [];
+        charts.reward.data.datasets[0].data = [];
+        charts.reward.data.datasets[1].data = [];
+        charts.maxTile.data.labels = [];
+        charts.maxTile.data.datasets[0].data = [];
+        charts.loss.data.labels = [];
+        charts.loss.data.datasets[0].data = [];
+        
+        // Add all history points
+        for (let i = 0; i < data.rewards_chart.length; i++) {
+            const episodeNum = data.total_episodes - data.rewards_chart.length + i + 1;
+            charts.reward.data.labels.push(episodeNum);
+            charts.reward.data.datasets[0].data.push(data.rewards_chart[i]);
+            
+            // Recent average data - just use the same value for now
+            charts.reward.data.datasets[1].data.push(data.recent_avg_reward);
+            
+            // Max tile history
+            charts.maxTile.data.labels.push(episodeNum);
+            if (data.max_tile_chart && i < data.max_tile_chart.length) {
+                charts.maxTile.data.datasets[0].data.push(data.max_tile_chart[i]);
+            }
+            
+            // Loss history
+            charts.loss.data.labels.push(episodeNum);
+            if (data.loss_chart && i < data.loss_chart.length) {
+                charts.loss.data.datasets[0].data.push(data.loss_chart[i]);
+            }
+        }
+        
+        // Update all charts
+        charts.reward.update();
+        charts.maxTile.update();
+        charts.loss.update();
+    } else {
+        // Fall back to single point update
+        console.log("No history arrays found, adding single data points");
+        addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, data.recent_avg_reward);
+        addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
+        addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
+    }
 });
 
 socket.on('game_update', function(data) {
