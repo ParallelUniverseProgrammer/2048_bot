@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2048 RL Bot Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>2048 RL Bot Dashboard</h1>
+            <div class="subtitle">Advanced reinforcement learning agent using CNN-Transformer hybrid architecture</div>
+            <div>
+                Web UI: <span id="server-url" style="font-weight: bold; color: var(--secondary-color);"></span>
+            </div>
+        </header>
+
+        <div class="card">
+            <h2>Hardware Monitoring</h2>
+            <div class="hardware-info">
+                <div class="hardware-card">
+                    <div class="hardware-title">CPU Usage</div>
+                    <div id="cpu-usage">
+                        <div class="hardware-value">0.0%</div>
+                        <div class="hardware-details">0 cores</div>
+                    </div>
+                </div>
+                <div class="hardware-card">
+                    <div class="hardware-title">RAM Usage</div>
+                    <div id="ram-usage">
+                        <div class="hardware-value">0.0 GB</div>
+                        <div class="hardware-details">0.0% of 0.0 GB</div>
+                    </div>
+                </div>
+            </div>
+            <div id="gpu-info" class="hardware-info">
+                <div class="hardware-card">
+                    <div class="hardware-value">No GPUs detected</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="start-training" class="btn">Start Training</button>
+            <button id="start-watch" class="btn btn-secondary">Watch Gameplay</button>
+            <button id="stop-process" class="btn" disabled>Stop Process</button>
+        </div>
+
+        <!-- Training Panel -->
+        <div id="training-panel" class="card hidden">
+            <h2>Training Progress</h2>
+            
+            <div class="dashboard">
+                <div class="dashboard-panel">
+                    <h3>Training Statistics</h3>
+                    <div class="training-stats">
+                        <div class="stat-group">
+                            <div class="stat">
+                                <div class="stat-label">Total Episodes</div>
+                                <div id="total-episodes" class="stat-value">0</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Average Batch Reward</div>
+                                <div id="avg-batch-reward" class="stat-value">0.00</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Recent Average Reward</div>
+                                <div id="recent-avg-reward" class="stat-value">0.00</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Best Average Reward</div>
+                                <div id="best-avg-reward" class="stat-value">0.00</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Average Episode Length</div>
+                                <div id="avg-episode-length" class="stat-value">0.00</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Best Tile (this batch)</div>
+                                <div id="batch-max-tile" class="stat-value">0</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Best Tile Overall</div>
+                                <div id="best-tile" class="stat-value">0</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Best Tile Rate</div>
+                                <div id="best-tile-rate" class="stat-value">0.0%</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-label">Current Learning Rate</div>
+                                <div id="current-lr" class="stat-value">0.0000</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="dashboard-panel">
+                    <h3>Performance Charts</h3>
+                    <div class="metrics-container">
+                        <canvas id="reward-chart"></canvas>
+                    </div>
+                    <div class="metrics-container">
+                        <canvas id="max-tile-chart"></canvas>
+                    </div>
+                    <div class="metrics-container">
+                        <canvas id="loss-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Watch Panel -->
+        <div id="watch-panel" class="card hidden">
+            <h2>Game Visualization</h2>
+            
+            <div class="dashboard">
+                <div class="dashboard-panel">
+                    <div id="game-board" class="game-board"></div>
+                    
+                    <div class="game-info">
+                        <div class="game-stats">
+                            <div class="stat-label">Score</div>
+                            <div id="game-score" class="stat-value">0</div>
+                        </div>
+                        <div class="game-stats">
+                            <div class="stat-label">Best Tile</div>
+                            <div id="best-tile" class="stat-value">0</div>
+                        </div>
+                        <div class="game-stats">
+                            <div class="stat-label">Moves</div>
+                            <div id="move-count" class="stat-value">0</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="dashboard-panel">
+                    <h3>Agent Decision Making</h3>
+                    <p>The agent uses a hybrid CNN-Transformer architecture to process board states. The CNN layers extract local patterns while the Transformer captures global relationships between tiles.</p>
+                    
+                    <h4>Reward Function Components</h4>
+                    <ul>
+                        <li>Merge score: Points earned from combining tiles</li>
+                        <li>Empty cells: Bonus for maintaining open spaces</li>
+                        <li>High tiles: Bonus for achieving high-value tiles</li>
+                        <li>Edge placement: Bonus for keeping high tiles on edges</li>
+                        <li>Potential merges: Bonus for setting up future merges</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
