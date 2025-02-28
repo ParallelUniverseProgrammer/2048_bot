@@ -267,7 +267,7 @@ def start_hardware_monitoring():
 
 # Function to run training mode
 def start_training(conn, stop_event):
-    # Simplified data collector for reliable updates
+    # High-performance data collector with immediate updates
     class DataCollector:
         def __init__(self, connection):
             self.conn = connection
@@ -282,18 +282,17 @@ def start_training(conn, stop_event):
             self.best_tile_rate = 0.0
             self.current_lr = bot_module.LEARNING_RATE
             self.last_update_time = 0
+            # Buffer for chart data
+            self.rewards_buffer = []
+            self.tiles_buffer = []
+            self.moves_buffer = []
+            self.loss_buffer = []
             
         def update(self, avg_batch_reward, recent_avg_reward, best_avg_reward,
                   avg_batch_moves, batch_max_tile, best_max_tile, batch_loss,
                   total_episodes, rewards_history, moves_history, max_tile_history,
                   best_tile_rate, current_lr, status_message=""):
-            # Send updates as fast as possible with minimal rate limiting
-            # Just ensure we don't send updates more frequently than every 0.05 seconds (20 updates per second)
-            current_time = time.time()
-            if current_time - self.last_update_time < 0.05 and self.total_episodes > 0:
-                return
-                
-            self.last_update_time = current_time
+            # No rate limiting - send updates instantly
             self.total_episodes = total_episodes
             self.batch_loss = float(batch_loss) if batch_loss is not None else 0.0
             self.batch_reward = float(avg_batch_reward)
@@ -305,15 +304,33 @@ def start_training(conn, stop_event):
             self.best_tile_rate = float(best_tile_rate)
             self.current_lr = float(current_lr)
             
-            # Print what we're sending (for debugging)
-            print(f"Sending update: episodes={self.total_episodes}, reward={self.batch_reward:.2f}, max_tile={self.batch_max_tile}")
+            # Add to buffered data for charts
+            self.rewards_buffer.append(float(avg_batch_reward))
+            self.tiles_buffer.append(int(batch_max_tile))
+            self.moves_buffer.append(float(avg_batch_moves))
+            if batch_loss is not None:
+                self.loss_buffer.append(float(batch_loss))
+            
+            # Keep buffer sizes manageable
+            max_buffer = 100
+            if len(self.rewards_buffer) > max_buffer:
+                self.rewards_buffer = self.rewards_buffer[-max_buffer:]
+            if len(self.tiles_buffer) > max_buffer:
+                self.tiles_buffer = self.tiles_buffer[-max_buffer:]
+            if len(self.moves_buffer) > max_buffer:
+                self.moves_buffer = self.moves_buffer[-max_buffer:]
+            if len(self.loss_buffer) > max_buffer:
+                self.loss_buffer = self.loss_buffer[-max_buffer:]
             
             # Send update through pipe with explicit error handling
             try:
-                # Make sure all fields are defined as proper values (not None)
-                update_data = {
+                # Split data into two types: stat updates (fast) and chart updates (less frequent)
+                
+                # STAT UPDATE - send immediately for every update
+                stat_data = {
+                    'type': 'stat_update',
                     'total_episodes': int(self.total_episodes),
-                    'batch_loss': float(self.batch_loss) if self.batch_loss is not None else 0.0,
+                    'batch_loss': float(self.batch_loss),
                     'avg_batch_reward': float(self.batch_reward),
                     'recent_avg_reward': float(self.recent_avg_reward),
                     'best_avg_reward': float(self.best_avg_reward),
@@ -326,14 +343,28 @@ def start_training(conn, stop_event):
                 
                 # Add status message if provided
                 if status_message:
-                    update_data['status_message'] = status_message
+                    stat_data['status_message'] = status_message
                     
-                # Check if we're approaching a 16-episode boundary (model save)
+                # Check if we're approaching checkpoint
                 if self.total_episodes % bot_module.MODEL_SAVE_INTERVAL >= bot_module.MODEL_SAVE_INTERVAL - 2:
-                    update_data['approaching_checkpoint'] = True
+                    stat_data['approaching_checkpoint'] = True
                     
-                self.conn.send(update_data)
-                print("Update sent successfully")
+                # Send stats immediately
+                self.conn.send(stat_data)
+                
+                # CHART UPDATE - send less frequently to avoid overwhelming
+                # Only send chart data after certain episodes or when significant changes occur
+                if self.total_episodes % 3 == 0 or batch_max_tile > self.best_max_tile * 0.8:
+                    chart_data = {
+                        'type': 'chart_update',
+                        'rewards_data': self.rewards_buffer.copy(),
+                        'tiles_data': self.tiles_buffer.copy(),
+                        'moves_data': self.moves_buffer.copy(),
+                        'loss_data': self.loss_buffer.copy(),
+                        'episode_base': self.total_episodes - len(self.rewards_buffer) + 1
+                    }
+                    self.conn.send(chart_data)
+                
             except (BrokenPipeError, EOFError) as e:
                 print(f"Error sending update: {e}")
             except Exception as e:
@@ -707,71 +738,69 @@ def start_watch(conn, stop_event):
     finally:
         conn.close()
 
-# Function to handle training updates from pipe - simplified for reliability
+# Function to handle training updates from pipe - optimized for instant updates
 def handle_training_updates(conn):
     try:
-        print("Training update handler started")
+        print("Optimized training update handler started")
         
         while not stop_event.is_set():
-            # Simple polling approach with clear error handling
+            # Use faster polling with minimal delay
             try:
-                if conn.poll(0.5):  # Check every 0.5 seconds
+                if conn.poll(0.1):  # Check every 0.1 seconds - more responsive
                     try:
                         data = conn.recv()
-                        print(f"Received training update: episodes={data.get('total_episodes', 0)}")
                         
-                        # Update local training data
-                        training_data['total_episodes'] = int(data['total_episodes'])
-                        training_data['rewards_history'].append(data['avg_batch_reward'])
-                        training_data['max_tile_history'].append(data['batch_max_tile'])
-                        if 'batch_loss' in data and data['batch_loss'] is not None:
-                            training_data['loss_history'].append(data['batch_loss'])
-                        # Add moves history explicitly
-                        if 'avg_batch_moves' in data:
-                            training_data['moves_history'].append(data['avg_batch_moves'])
-                        training_data['best_avg_reward'] = max(training_data['best_avg_reward'], data['best_avg_reward'])
-                        training_data['best_max_tile'] = max(training_data['best_max_tile'], data['best_max_tile'])
+                        # Check message type to determine processing
+                        msg_type = data.get('type', 'stat_update')  # Default to stat_update for backward compatibility
                         
-                        # Debug print for total_episodes
-                        print(f"DEBUG: Total episodes: {training_data['total_episodes']}, type: {type(training_data['total_episodes'])}")
-                        
-                        # Create a formatted version for the client with chart data
-                        client_data = data.copy()
-                        
-                        # Add history arrays for charts - make sure they're all converted to proper lists
-                        client_data['rewards_chart'] = [float(val) for val in list(training_data['rewards_history'])]
-                        client_data['max_tile_chart'] = [int(val) for val in list(training_data['max_tile_history'])]
-                        client_data['loss_chart'] = [float(val) for val in list(training_data['loss_history'])]
-                        client_data['moves_chart'] = [float(val) for val in list(training_data['moves_history'])]
-                        
-                        # Ensure total_episodes is an integer 
-                        # Force it to be an integer and debug
-                        try:
-                            client_data['total_episodes'] = int(data['total_episodes'])
-                            print(f"DEBUG: client_data total_episodes set to {client_data['total_episodes']}, type: {type(client_data['total_episodes'])}")
-                        except (ValueError, TypeError) as e:
-                            print(f"ERROR converting total_episodes: {e}, value was: {data['total_episodes']}, type: {type(data['total_episodes'])}")
-                            # Fallback to a safe default if conversion fails
-                            client_data['total_episodes'] = training_data['total_episodes']
-                        
-                        # Ensure learning rate is a float
-                        client_data['current_lr'] = float(client_data['current_lr'])
-                        
-                        # Add checkpoint info if provided
-                        if 'status_message' in data:
-                            client_data['status_message'] = data['status_message']
-                        
-                        # Add checkpoint indicator if approaching model save
-                        if 'approaching_checkpoint' in data and data['approaching_checkpoint']:
-                            client_data['approaching_checkpoint'] = True
+                        if msg_type == 'stat_update':
+                            # Fast path for stats - minimal processing, direct forwarding
+                            # Extract the key stats for local tracking
+                            training_data['total_episodes'] = int(data['total_episodes'])
+                            training_data['best_avg_reward'] = max(training_data['best_avg_reward'], 
+                                                                data.get('best_avg_reward', 0))
+                            training_data['best_max_tile'] = max(training_data['best_max_tile'], 
+                                                               data.get('best_max_tile', 0))
                             
-                        # For debugging:
-                        print(f"Chart data sizes: rewards={len(client_data['rewards_chart'])}, tiles={len(client_data['max_tile_chart'])}, loss={len(client_data['loss_chart'])}, moves={len(client_data['moves_chart'])}")
-                        print(f"Sample chart data: rewards={client_data['rewards_chart'][:3] if client_data['rewards_chart'] else []}, type={type(client_data['rewards_chart'][0]) if client_data['rewards_chart'] else 'empty'}")
+                            # Also update history for chart consistency
+                            training_data['rewards_history'].append(data['avg_batch_reward'])
+                            training_data['max_tile_history'].append(data['batch_max_tile'])
+                            if 'batch_loss' in data and data['batch_loss'] is not None:
+                                training_data['loss_history'].append(data['batch_loss'])
+                            if 'avg_batch_moves' in data:
+                                training_data['moves_history'].append(data['avg_batch_moves'])
+                            
+                            # Forward stats directly to client - no extra processing
+                            # Simply ensure we have proper types for key values
+                            if 'current_lr' in data and data['current_lr'] is not None:
+                                data['current_lr'] = float(data['current_lr'])
+                            else:
+                                data['current_lr'] = 0.0001
+                            
+                            # Stream the data immediately to client
+                            socketio.emit('stats_update', data)
+                            
+                        elif msg_type == 'chart_update':
+                            # Process chart data separately - this can be less frequent
+                            try:
+                                # Pre-validated arrays from the DataCollector class
+                                chart_data = {
+                                    'rewards_chart': data['rewards_data'],
+                                    'max_tile_chart': data['tiles_data'],
+                                    'moves_chart': data['moves_data'],
+                                    'loss_chart': data['loss_data'],
+                                    'episode_base': data['episode_base']
+                                }
+                                
+                                # Send chart update to client
+                                socketio.emit('chart_update', chart_data)
+                            except Exception as e:
+                                print(f"Error processing chart data: {e}")
                         
-                        # Immediately send the update to the client
-                        print("Emitting training update to clients")
-                        socketio.emit('training_update', client_data)
+                        # Legacy support for pre-typed messages
+                        else:
+                            # Forward with minimal processing for compatibility
+                            socketio.emit('training_update', data)
                         
                     except (EOFError, BrokenPipeError) as e:
                         print(f"Pipe error: {e}")
@@ -781,15 +810,11 @@ def handle_training_updates(conn):
                         print(f"Error processing training update: {e}")
                         import traceback
                         traceback.print_exc()
-                else:
-                    # No data received in timeout period
-                    pass
-                    
             except Exception as e:
                 print(f"Error polling pipe: {e}")
                 import traceback
                 traceback.print_exc()
-                time.sleep(1)  # Sleep longer on error
+                time.sleep(0.5)  # Short sleep on error
                 
     except Exception as e:
         print(f"Error in training updates thread: {e}")
