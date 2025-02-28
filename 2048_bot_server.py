@@ -500,12 +500,13 @@ def start_training(conn, stop_event):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), bot_module.GRAD_CLIP)
                 optimizer.step()
             
-            # Update running baseline using exponential moving average
+            # Update running baseline using a smoother exponential moving average
             avg_batch_reward = batch_reward_sum / bot_module.BATCH_SIZE
             if total_episodes <= bot_module.WARMUP_EPISODES:
                 baseline = avg_batch_reward
             else:
-                baseline = 0.95 * baseline + 0.05 * avg_batch_reward
+                # Use a slower update rate for more stability
+                baseline = 0.99 * baseline + 0.01 * avg_batch_reward
             
             # Update learning rate scheduler
             recent_avg_reward = (sum(rewards_history[-100:]) / min(len(rewards_history), 100)
@@ -595,13 +596,13 @@ def start_training(conn, stop_event):
             print("Starting with a fresh model")
             # Continue with fresh model
         
-        # Enhanced optimizer for more aggressive exploration
+        # Optimizer tuned for stability
         optimizer = torch.optim.AdamW(
             model.parameters(), 
             lr=bot_module.LEARNING_RATE,
-            weight_decay=1e-6,  # Reduced weight decay to allow more exploration
-            betas=(0.9, 0.95),  # More aggressive beta2 for faster adaptation
-            eps=1e-5            # Slightly higher epsilon for more stable updates with novel reward function
+            weight_decay=2e-6,  # Slight increase in weight decay for regularization
+            betas=(0.9, 0.99),  # More conservative beta2 for stability
+            eps=1e-8            # Standard epsilon value
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='max', factor=bot_module.LR_SCHEDULER_FACTOR,

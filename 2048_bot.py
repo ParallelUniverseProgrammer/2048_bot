@@ -34,23 +34,23 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 # ---------------- CONFIGURATION PARAMETERS ----------------
-# Learning parameters - adjusted for faster progress
-LEARNING_RATE = 8e-4           # Increased learning rate for faster adaptation
-EARLY_LR_MULTIPLIER = 2.0      # More aggressive multiplier for quicker early learning
-WARMUP_EPISODES = 20           # Shorter warmup period for faster training start
-GRAD_CLIP = 1.2                # Moderate norm for gradient clipping
-LR_SCHEDULER_PATIENCE = 75     # Moderate patience for LR scheduler
-LR_SCHEDULER_FACTOR = 0.75     # Moderate reduction factor
-BATCH_SIZE = 64                # Smaller batch size for more dynamic updates
-MINI_BATCH_COUNT = 4           # Run multiple mini-batches in parallel for VRAM utilization
-MODEL_SAVE_INTERVAL = 128      # Save model more frequently (every 8 episodes instead of 16)
+# Learning parameters - tuned for more stable learning
+LEARNING_RATE = 3e-4           # Reduced learning rate for more stable learning
+EARLY_LR_MULTIPLIER = 1.5      # Less aggressive multiplier to prevent early overfitting
+WARMUP_EPISODES = 30           # Longer warmup period for more stable initial learning
+GRAD_CLIP = 0.8                # Reduced gradient clipping to prevent gradient explosions
+LR_SCHEDULER_PATIENCE = 100    # Increased patience for LR scheduler
+LR_SCHEDULER_FACTOR = 0.8      # Less aggressive reduction factor
+BATCH_SIZE = 16                # Larger batch size for more stable gradient estimates
+MINI_BATCH_COUNT = 4           # Fewer mini-batches with larger batch size
+MODEL_SAVE_INTERVAL = 200      # Less frequent checkpoints to avoid disrupting training
 CHECKPOINT_OPTIMIZATION = True # Enable checkpoint optimization
 SKIP_BACKWARD_PASS = False     # For debugging: skip backward pass to isolate slowdowns
 # Cyclical Learning Rate parameters
 USE_CYCLICAL_LR = True         # Enable cyclical learning rate
-CYCLICAL_LR_BASE = 8e-4        # Base learning rate for cyclical LR
-CYCLICAL_LR_MAX = 1.2e-3       # Max learning rate for cyclical LR
-CYCLICAL_LR_STEP_SIZE = 40     # Step size (in episodes) for each half cycle
+CYCLICAL_LR_BASE = 3e-4        # Reduced base learning rate
+CYCLICAL_LR_MAX = 6e-4         # Reduced max learning rate for more stable learning
+CYCLICAL_LR_STEP_SIZE = 60     # Longer step size for smoother transitions
 
 # Model architecture parameters - increased for higher VRAM usage and better generalization
 DMODEL = 264                   # Adjusted dimensionality to be divisible by number of heads
@@ -59,13 +59,13 @@ NUM_TRANSFORMER_LAYERS = 6     # More transformer layers for deeper reasoning
 DROPOUT = 0.15                 # Slightly increased dropout for better regularization
 VOCAB_SIZE = 16                # Vocabulary size for tile embeddings (unchanged)
 
-# Reward function hyperparameters - adjusted to prioritize high tiles and better generalization
-HIGH_TILE_BONUS = 8.0          # Higher bonus for achieving high tiles (512+)
-INEFFECTIVE_PENALTY = 0.3      # Reduced penalty to encourage more exploratory moves
-REWARD_SCALING = 0.2           # Increased reward scaling for more decisive feedback
-TIME_FACTOR_CONSTANT = 40.0    # Adjusted time factor for faster long-term planning development
-NOVELTY_BONUS = 6.0            # Increased reward for novel board configurations
-HIGH_TILE_THRESHOLD = 512      # Special threshold for additional bonuses (helps push past 512)
+# Reward function hyperparameters - tuned for more stable learning
+HIGH_TILE_BONUS = 5.0          # Moderate bonus for achieving high tiles
+INEFFECTIVE_PENALTY = 0.2      # Reduced penalty for more exploration
+REWARD_SCALING = 0.1           # Reduced reward scaling for more stable learning 
+TIME_FACTOR_CONSTANT = 60.0    # Smoother time factor scaling
+NOVELTY_BONUS = 3.0            # Reduced novelty bonus to prevent erratic behavior
+HIGH_TILE_THRESHOLD = 512      # Special threshold for additional bonuses
 
 # Display settings
 DISPLAY_DELAY = 0.001          # Faster refresh rate for training display
@@ -269,47 +269,45 @@ def compute_novelty(board):
 
 def compute_reward(merge_score, board, forced_penalty, move_count):
     """
-    Enhanced reward function with special focus on high tiles (512+) and better exploration.
+    Smoothed reward function with more stable scaling.
     Rewards:
       - High tile bonus: encourages achieving higher value tiles
       - Novelty: rewards unusual board configurations to encourage exploration
       - Special bonus for breaking past the 512 threshold
       - Adjacency bonus for keeping high value tiles together
-      - Checkpoint consistency adjustment to prevent reward drops at model save points
+      - Smoother checkpoint transitions to prevent learning disruption
     """
     # Get episode number for checkpoint consistency
     episode_num = move_count  # Approximate episode count from move_count
     checkpoint_factor = 1.0
     
-    # Apply a mild reward boost near checkpoints to counteract the observed drop
-    # This helps maintain consistency across model saves
-    if episode_num % MODEL_SAVE_INTERVAL >= MODEL_SAVE_INTERVAL - 3:
-        # Gradual increase as we approach checkpoint
-        distance_to_checkpoint = MODEL_SAVE_INTERVAL - (episode_num % MODEL_SAVE_INTERVAL)
-        if distance_to_checkpoint == 0:  # At checkpoint
-            checkpoint_factor = 1.15  # 15% boost at checkpoint
-        elif distance_to_checkpoint == 1:  # One before checkpoint
-            checkpoint_factor = 1.12  # 12% boost one before
-        elif distance_to_checkpoint == 2:  # Two before checkpoint 
-            checkpoint_factor = 1.08  # 8% boost two before
-        elif distance_to_checkpoint == 3:  # Three before checkpoint
-            checkpoint_factor = 1.05  # 5% boost three before
+    # Apply a smoother, more gradual reward adjustment around checkpoints
+    # Extend the transition window to prevent sharp drops
+    if MODEL_SAVE_INTERVAL > 0:  # Only apply if checkpointing is enabled
+        # Calculate how close we are to a checkpoint
+        distance_to_checkpoint = episode_num % MODEL_SAVE_INTERVAL
+        # Normalize the position within the cycle to [0, 1]
+        cycle_position = distance_to_checkpoint / MODEL_SAVE_INTERVAL
+        
+        # Apply a small sinusoidal smoothing - gentler transition that averages to 1.0
+        # This keeps the average reward constant while preventing sharp transitions
+        checkpoint_factor = 1.0 + 0.03 * math.sin(2 * math.pi * cycle_position)
     
     max_tile = max(max(row) for row in board)
     
-    # Basic high tile bonus with progressive scaling
+    # Basic high tile bonus with more linear scaling
     log_max = math.log2(max_tile) if max_tile > 0 else 0
     
-    # Apply extra reward scaling for tiles >= HIGH_TILE_THRESHOLD
+    # Apply more gradual reward scaling for high tiles
     if max_tile >= HIGH_TILE_THRESHOLD:
-        # Additional bonus that increases more rapidly for higher tiles
-        threshold_bonus = (log_max - math.log2(HIGH_TILE_THRESHOLD) + 1) ** 2
-        bonus_high = log_max * HIGH_TILE_BONUS * 2.0 + threshold_bonus * 10.0
+        # More linear scaling for more stable learning
+        threshold_bonus = (log_max - math.log2(HIGH_TILE_THRESHOLD) + 1) * 3.0
+        bonus_high = log_max * HIGH_TILE_BONUS + threshold_bonus
     else:
-        bonus_high = log_max * HIGH_TILE_BONUS * 1.5
+        bonus_high = log_max * HIGH_TILE_BONUS
     
-    # Enhanced novelty calculation
-    novelty = compute_novelty(board) * NOVELTY_BONUS * 3.0
+    # More conservative novelty calculation
+    novelty = compute_novelty(board) * NOVELTY_BONUS
     
     # Adjacency bonus: reward keeping high value tiles together
     adjacency_bonus = 0.0
@@ -318,23 +316,26 @@ def compute_reward(merge_score, board, forced_penalty, move_count):
             if board[i][j] >= 64:  # Only consider significant tiles
                 # Check horizontal adjacency
                 if j > 0 and board[i][j-1] == board[i][j]:
-                    adjacency_bonus += math.log2(board[i][j]) * 0.5
+                    adjacency_bonus += math.log2(board[i][j]) * 0.3
                 # Check vertical adjacency
                 if i > 0 and board[i-1][j] == board[i][j]:
-                    adjacency_bonus += math.log2(board[i][j]) * 0.5
+                    adjacency_bonus += math.log2(board[i][j]) * 0.3
     
     # Combine components with adjacency bonus
     base_reward = bonus_high + novelty + adjacency_bonus
     
-    # Introduce time-dependent bonus: later moves contribute more
-    time_factor = 1.0 + (move_count / TIME_FACTOR_CONSTANT)
+    # Smoother time-dependent bonus
+    time_factor = 1.0 + math.log(1 + move_count / TIME_FACTOR_CONSTANT)
     
     # Add small bonus for merge score to encourage effective merges
-    merge_component = merge_score * 0.01
+    merge_component = merge_score * 0.005  # Reduced merge weight
     
-    # Apply checkpoint consistency factor to prevent reward drops
+    # Apply the smoothed checkpoint factor
     reward = (base_reward + merge_component) * REWARD_SCALING * time_factor * checkpoint_factor
-    return max(reward, 0)
+    
+    # Subtract any forced move penalties
+    reward = max(reward - forced_penalty, 0)
+    return reward
 
 # --- Hybrid CNN-Transformer Policy ---
 class ConvTransformerPolicy(nn.Module):
@@ -736,11 +737,12 @@ def train_loop(stdscr, model, optimizer, scheduler, device):
         avg_batch_reward = batch_reward_sum / BATCH_SIZE
         avg_batch_moves = batch_moves_sum / BATCH_SIZE
 
-        # Update running baseline using exponential moving average
+        # Update running baseline using a smoother exponential moving average
         if total_episodes <= WARMUP_EPISODES:
             baseline = avg_batch_reward
         else:
-            baseline = 0.98 * baseline + 0.02 * avg_batch_reward
+            # Slower update rate for more stability
+            baseline = 0.99 * baseline + 0.01 * avg_batch_reward
 
         if batch_log:
             batch_loss = torch.stack(batch_log).mean()
