@@ -44,6 +44,7 @@ const hyperparams = {...defaultHyperparams};
 
 // DOM Elements - Main controls
 const trainingButton = document.getElementById('start-training');
+const stopTrainingButton = document.getElementById('stop-training');
 const watchButton = document.getElementById('start-watch');
 const trainingPanel = document.getElementById('training-panel');
 const watchPanel = document.getElementById('watch-panel');
@@ -724,10 +725,6 @@ trainingButton.addEventListener('click', function() {
             trainingPanel.classList.remove('hidden');
             watchPanel.classList.add('hidden');
             
-            // Keep buttons disabled as process is running
-            trainingButton.disabled = true;
-            watchButton.disabled = true;
-            
             // Update button states
             updateButtonStates();
             showLoadingIndicator(false);
@@ -744,14 +741,29 @@ trainingButton.addEventListener('click', function() {
     trainingPanel.classList.remove('hidden');
     watchPanel.classList.add('hidden');
     
-    trainingButton.disabled = true;
-    watchButton.disabled = true;
-    
     // Update button states
     updateButtonStates();
     
     // Hide loading after a brief delay
     setTimeout(() => showLoadingIndicator(false), 1500);
+});
+
+// Stop training button handler
+stopTrainingButton.addEventListener('click', function() {
+    if (currentMode !== 'train') {
+        return;
+    }
+    
+    showLoadingIndicator(true, 'Stopping training...');
+    socket.emit('stop');
+    
+    // Wait for the server to confirm stop
+    setTimeout(() => {
+        currentMode = null;
+        updateButtonStates();
+        showLoadingIndicator(false);
+        showToast('Training stopped', 'info');
+    }, 1000);
 });
 
 watchButton.addEventListener('click', function() {
@@ -792,10 +804,6 @@ watchButton.addEventListener('click', function() {
             trainingPanel.classList.add('hidden');
             watchPanel.classList.remove('hidden');
             
-            // Keep buttons disabled as process is running
-            trainingButton.disabled = true;
-            watchButton.disabled = true;
-            
             // Initialize new game board
             initGameBoard();
             
@@ -814,9 +822,6 @@ watchButton.addEventListener('click', function() {
     
     trainingPanel.classList.add('hidden');
     watchPanel.classList.remove('hidden');
-    
-    trainingButton.disabled = true;
-    watchButton.disabled = true;
     
     initGameBoard();
     
@@ -968,9 +973,13 @@ function toggleSection(section, button) {
         section.style.maxHeight = null;
         button.querySelector('i').textContent = 'expand_more';
     } else {
-        section.style.maxHeight = section.scrollHeight + 'px';
+        // Add some extra space for padding
+        section.style.maxHeight = (section.scrollHeight + 20) + 'px';
         button.querySelector('i').textContent = 'expand_less';
     }
+    
+    // Force reflow to ensure transition works properly
+    section.offsetHeight;
 }
 
 // Function to update button states based on current mode
@@ -984,6 +993,9 @@ function updateButtonStates() {
         // Keep Training button enabled but with different visual style
         trainingButton.disabled = false;
         trainingButton.classList.add('btn-alternate');
+        
+        // Hide stop training button
+        stopTrainingButton.classList.add('hidden');
     } else if (currentMode === 'train') {
         // Reset Watch button
         watchButton.innerHTML = '<i class="material-icons">visibility</i>Watch Gameplay';
@@ -991,9 +1003,9 @@ function updateButtonStates() {
         watchButton.disabled = false;
         watchButton.classList.add('btn-alternate');
         
-        // Disable Training button
-        trainingButton.disabled = true;
-        trainingButton.classList.remove('btn-alternate');
+        // Hide Training button and show Stop button
+        trainingButton.classList.add('hidden');
+        stopTrainingButton.classList.remove('hidden');
     } else {
         // Reset all buttons to default state when stopped
         watchButton.innerHTML = '<i class="material-icons">visibility</i>Watch Gameplay';
@@ -1002,7 +1014,11 @@ function updateButtonStates() {
         watchButton.disabled = false;
         
         trainingButton.disabled = false;
+        trainingButton.classList.remove('hidden');
         trainingButton.classList.remove('btn-alternate');
+        
+        // Hide stop training button
+        stopTrainingButton.classList.add('hidden');
     }
 }
 

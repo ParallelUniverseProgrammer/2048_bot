@@ -209,6 +209,15 @@ h3 {
     background-color: var(--secondary-variant);
 }
 
+.material-button.danger {
+    background-color: var(--error-color);
+    color: var(--on-error);
+}
+
+.material-button.danger:hover {
+    background-color: #d32f2f;
+}
+
 .material-button.icon-button {
     min-width: auto;
     width: 36px;
@@ -263,9 +272,18 @@ h3 {
 }
 
 .hardware-panel {
-    padding: 16px;
+    padding: 0;
     transition: max-height 0.3s ease;
     overflow: hidden;
+    max-height: 0;
+}
+
+.hardware-panel > * {
+    padding: 16px;
+}
+
+.hardware-grid:last-child {
+    margin-bottom: 8px;
 }
 
 .hardware-grid {
@@ -312,9 +330,22 @@ h3 {
 }
 
 .hyperparams-content {
-    padding: 0 16px 16px;
+    padding: 0;
     transition: max-height 0.3s ease;
     overflow: hidden;
+    max-height: 0;
+}
+
+.hyperparams-content > * {
+    padding: 0 16px;
+}
+
+.hyperparams-content .tabs {
+    padding-top: 16px;
+}
+
+.param-actions {
+    padding-bottom: 16px !important;
 }
 
 .tabs {
@@ -353,6 +384,7 @@ h3 {
 .tab-content {
     display: none;
     animation: fadeIn 0.3s ease;
+    padding-bottom: 8px;
 }
 
 .tab-content.active {
