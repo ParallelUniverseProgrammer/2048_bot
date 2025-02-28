@@ -16,6 +16,7 @@ const moveCount = document.getElementById('move-count');
 const rewardChart = document.getElementById('reward-chart').getContext('2d');
 const maxTileChart = document.getElementById('max-tile-chart').getContext('2d');
 const lossChart = document.getElementById('loss-chart').getContext('2d');
+const movesChart = document.getElementById('moves-chart').getContext('2d');
 
 // Hardware monitoring elements
 const cpuUsage = document.getElementById('cpu-usage');
@@ -273,6 +274,24 @@ function updateHardwareInfo(data) {
 
 // Button event handlers
 trainingButton.addEventListener('click', function() {
+    // Don't allow if a process is currently stopping
+    if (stopButton.textContent === "Stopping...") {
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.style.backgroundColor = "#cf6679"; // Error color
+        notification.textContent = 'Please wait for the current process to stop completely';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 500);
+        }, 3000);
+        return;
+    }
+    
+    // Show loading indicator until we get the first update
+    showLoadingIndicator(true, "Starting training process...");
+    
     currentMode = 'train';
     socket.emit('start', { mode: 'train' });
     
@@ -285,6 +304,24 @@ trainingButton.addEventListener('click', function() {
 });
 
 watchButton.addEventListener('click', function() {
+    // Don't allow if a process is currently stopping
+    if (stopButton.textContent === "Stopping...") {
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.style.backgroundColor = "#cf6679"; // Error color
+        notification.textContent = 'Please wait for the current process to stop completely';
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 500);
+        }, 3000);
+        return;
+    }
+    
+    // Show loading indicator until we get the first game update
+    showLoadingIndicator(true, "Loading game visualization...");
+    
     currentMode = 'watch';
     socket.emit('start', { mode: 'watch' });
     
@@ -301,11 +338,16 @@ watchButton.addEventListener('click', function() {
 stopButton.addEventListener('click', function() {
     socket.emit('stop');
     
-    trainingButton.disabled = false;
-    watchButton.disabled = false;
+    // Don't immediately re-enable buttons
+    // Wait for the stopping_process and process_stopped events
+    stopButton.textContent = "Stopping...";
+    stopButton.style.backgroundColor = "#f65e3b";
     stopButton.disabled = true;
     
-    currentMode = null;
+    // Disable both buttons during stopping
+    trainingButton.disabled = true;
+    watchButton.disabled = true;
+    watchButton.style.opacity = "0.5";
 });
 
 // Socket.IO event handlers
@@ -317,6 +359,17 @@ socket.on('disconnect', function() {
     console.log('Disconnected from server');
 });
 
+socket.on('stopping_process', function() {
+    // Visual feedback that stopping is in progress
+    stopButton.textContent = "Stopping...";
+    stopButton.style.backgroundColor = "#f65e3b";
+    stopButton.disabled = true;
+    
+    // Disable watch button while stopping is in progress
+    watchButton.disabled = true;
+    watchButton.style.opacity = "0.5";
+});
+
 socket.on('hardware_info', function(data) {
     updateHardwareInfo(data);
 });
@@ -324,7 +377,10 @@ socket.on('hardware_info', function(data) {
 socket.on('training_update', function(data) {
     console.log("Received training update:", data);
     
-    // Update training statistics display
+    // Hide loading indicator on first training update
+    showLoadingIndicator(false);
+    
+    // Update training statistics display with formatted values
     document.getElementById('avg-batch-reward').textContent = data.avg_batch_reward.toFixed(2);
     document.getElementById('recent-avg-reward').textContent = data.recent_avg_reward.toFixed(2);
     document.getElementById('best-avg-reward').textContent = data.best_avg_reward.toFixed(2);
@@ -372,8 +428,18 @@ socket.on('training_update', function(data) {
             charts.reward.data.labels.push(episodeNum);
             charts.reward.data.datasets[0].data.push(data.rewards_chart[i]);
             
-            // Recent average data - just use the same value for now
-            charts.reward.data.datasets[1].data.push(data.recent_avg_reward);
+            // Calculate a proper smoothed average for rewards like we do for moves
+            if (i === 0) {
+                // Clear the smoothed reward data first when starting new batch
+                charts.reward.data.datasets[1].data = [];
+            }
+            
+            // Apply moving average with 10-episode window
+            const windowSize = 10;
+            const startIdx = Math.max(0, i - windowSize + 1);
+            const window = charts.reward.data.datasets[0].data.slice(startIdx, i + 1);
+            const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
+            charts.reward.data.datasets[1].data.push(avgValue);
             
             // Max tile history
             charts.maxTile.data.labels.push(episodeNum);
@@ -398,10 +464,17 @@ socket.on('training_update', function(data) {
             
             // Calculate smoothed average (10-episode moving average) for moves
             if (charts.moves.data.datasets[0].data.length > 0) {
+                // Calculate the smoothed value for each point with a 10-episode window
+                // This creates a proper smoothed line rather than just the latest value
+                if (i === 0) {
+                    // Clear the smoothed data first
+                    charts.moves.data.datasets[1].data = [];
+                }
+                
                 const windowSize = 10;
-                const startIdx = Math.max(0, charts.moves.data.datasets[0].data.length - windowSize);
-                const values = charts.moves.data.datasets[0].data.slice(startIdx);
-                const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length;
+                const startIdx = Math.max(0, i - windowSize + 1);
+                const window = charts.moves.data.datasets[0].data.slice(startIdx, i + 1);
+                const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
                 charts.moves.data.datasets[1].data.push(avgValue);
             }
         }
@@ -413,10 +486,21 @@ socket.on('training_update', function(data) {
         charts.moves.update();
     } else {
         // Fall back to single point update
-        console.log("No history arrays found, adding single data points");
-        addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, data.recent_avg_reward);
-        addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
-        addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
+        console.log("No history arrays found, using the optimized single point update");
+        
+        // Make sure both charts have two datasets
+        if (charts.reward.data.datasets.length === 1) {
+            charts.reward.data.datasets.push({
+                label: 'Smoothed Average',
+                data: [],
+                borderColor: '#03dac6',
+                backgroundColor: 'rgba(3, 218, 198, 0.0)',
+                borderWidth: 3, 
+                fill: false,
+                tension: 0.6,
+                pointRadius: 0
+            });
+        }
         
         // Add points to both datasets for the moves chart
         if (charts.moves.data.datasets.length === 1) {
@@ -432,21 +516,71 @@ socket.on('training_update', function(data) {
             });
         }
         
-        // Calculate smoothed average for moves chart
+        // Calculate smoothed averages for both moves and rewards chart
         if (charts.moves.data.datasets[0].data.length > 0) {
             const windowSize = Math.min(10, charts.moves.data.datasets[0].data.length);
-            const startIdx = Math.max(0, charts.moves.data.datasets[0].data.length - windowSize);
-            const values = [...charts.moves.data.datasets[0].data.slice(startIdx), data.avg_batch_moves];
-            const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length;
             
-            addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves, avgValue);
+            // For moves chart
+            const currentMovesData = [...charts.moves.data.datasets[0].data, data.avg_batch_moves];
+            const smoothedMovesData = [];
+            for (let i = 0; i < currentMovesData.length; i++) {
+                const startIdx = Math.max(0, i - windowSize + 1);
+                const window = currentMovesData.slice(startIdx, i + 1);
+                const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
+                smoothedMovesData.push(avgValue);
+            }
+            
+            // For rewards chart
+            const currentRewardsData = [...charts.reward.data.datasets[0].data, data.avg_batch_reward];
+            const smoothedRewardsData = [];
+            for (let i = 0; i < currentRewardsData.length; i++) {
+                const startIdx = Math.max(0, i - windowSize + 1);
+                const window = currentRewardsData.slice(startIdx, i + 1);
+                const avgValue = window.reduce((sum, val) => sum + val, 0) / window.length;
+                smoothedRewardsData.push(avgValue);
+            }
+            
+            // Update moves chart with the latest point and smoothed value
+            const latestMovesSmoothed = smoothedMovesData[smoothedMovesData.length - 1];
+            addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves, latestMovesSmoothed);
+            
+            // Update rewards chart with the latest point and smoothed value
+            const latestRewardsSmoothed = smoothedRewardsData[smoothedRewardsData.length - 1];
+            addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, latestRewardsSmoothed);
+            
+            // Update all previous points' smoothed values for moves
+            for (let i = 0; i < charts.moves.data.datasets[1].data.length - 1; i++) {
+                if (i < smoothedMovesData.length - 1) {
+                    charts.moves.data.datasets[1].data[i] = smoothedMovesData[i];
+                }
+            }
+            
+            // Update all previous points' smoothed values for rewards
+            for (let i = 0; i < charts.reward.data.datasets[1].data.length - 1; i++) {
+                if (i < smoothedRewardsData.length - 1) {
+                    charts.reward.data.datasets[1].data[i] = smoothedRewardsData[i];
+                }
+            }
+            
+            // Update max tile chart
+            addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
+            
+            // Update loss chart 
+            addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
         } else {
+            // First data point - add to all charts
             addDataPoint(charts.moves, data.total_episodes, data.avg_batch_moves, data.avg_batch_moves);
+            addDataPoint(charts.reward, data.total_episodes, data.avg_batch_reward, data.avg_batch_reward);
+            addDataPoint(charts.maxTile, data.total_episodes, data.batch_max_tile);
+            addDataPoint(charts.loss, data.total_episodes, data.batch_loss);
         }
     }
 });
 
 socket.on('game_update', function(data) {
+    // Hide loading indicator on first game update
+    showLoadingIndicator(false);
+    
     updateGameBoard(data.board);
     gameScore.textContent = data.score.toFixed(2);
     bestTile.textContent = data.max_tile;
@@ -454,15 +588,65 @@ socket.on('game_update', function(data) {
 });
 
 socket.on('process_stopped', function() {
+    // Re-enable buttons and reset their appearance
     trainingButton.disabled = false;
     watchButton.disabled = false;
+    watchButton.style.opacity = "1";
+    
     stopButton.disabled = true;
+    stopButton.textContent = "Stop Process";
+    stopButton.style.backgroundColor = ""; // Reset to default color
+    
     currentMode = null;
+    
+    // Notify the user that the process has stopped
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = 'Process stopped successfully';
+    document.body.appendChild(notification);
+    
+    // Remove notification after 3 seconds
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 500);
+    }, 3000);
 });
 
 socket.on('server_url', function(data) {
     document.getElementById('server-url').textContent = data.url;
 });
+
+// Add a loading indicator function
+function showLoadingIndicator(show, message = "Processing...") {
+    if (show) {
+        // Create loading overlay if it doesn't exist
+        if (!document.querySelector('.loading-overlay')) {
+            const overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            
+            const spinner = document.createElement('div');
+            spinner.className = 'loading-spinner';
+            
+            const text = document.createElement('div');
+            text.className = 'loading-text';
+            text.textContent = message;
+            
+            overlay.appendChild(spinner);
+            overlay.appendChild(text);
+            document.body.appendChild(overlay);
+        } else {
+            // Update existing message
+            document.querySelector('.loading-text').textContent = message;
+            document.querySelector('.loading-overlay').style.display = 'flex';
+        }
+    } else {
+        // Hide the loading overlay if it exists
+        const overlay = document.querySelector('.loading-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
+    }
+}
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {

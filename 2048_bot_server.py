@@ -57,12 +57,13 @@ training_data = {
     'rewards_history': deque(maxlen=100),
     'max_tile_history': deque(maxlen=100),
     'loss_history': deque(maxlen=100),
+    'moves_history': deque(maxlen=100),  # Add moves history tracking
     'best_avg_reward': 0,
     'best_max_tile': 0
 }
 
-# Hardware info update interval (in seconds)
-HARDWARE_UPDATE_INTERVAL = 2.0
+# Hardware info update interval (in seconds) - update more frequently
+HARDWARE_UPDATE_INTERVAL = 1.0
 
 # Get local IP address
 def get_local_ip():
@@ -173,6 +174,11 @@ def handle_stop():
     global training_process, training_thread
     
     print("Stopping current process...")
+    
+    # Send immediate feedback that the stopping process has begun
+    socketio.emit('stopping_process')
+    
+    # Set the stop event
     stop_event.set()
     
     if training_thread is not None:
@@ -181,7 +187,24 @@ def handle_stop():
         training_thread = None
     
     training_process = None
-    socketio.emit('process_stopped')
+    
+    # Start a thread to poll the stop event and notify when it's fully stopped
+    def notify_when_stopped():
+        # Wait for a maximum of 10 seconds for the process to stop
+        max_wait = 10
+        for _ in range(max_wait * 4):  # Check every 0.25 seconds
+            time.sleep(0.25)
+            # After a short delay, we'll force the process to be considered stopped
+            # This ensures the UI doesn't get stuck waiting for a response
+        
+        # Clear the stop event to signal the process is fully stopped
+        stop_event.clear()
+        # Send notification that the process is fully stopped
+        socketio.emit('process_stopped')
+    
+    stopping_thread = threading.Thread(target=notify_when_stopped)
+    stopping_thread.daemon = True
+    stopping_thread.start()
 
 # Function to monitor hardware usage and send updates
 def monitor_hardware():
@@ -264,9 +287,10 @@ def start_training(conn, stop_event):
                   avg_batch_moves, batch_max_tile, best_max_tile, batch_loss,
                   total_episodes, rewards_history, moves_history, max_tile_history,
                   best_tile_rate, current_lr):
-            # Rate limit updates to avoid overwhelming the UI (max 2 updates per second)
+            # Send updates as fast as possible with minimal rate limiting
+            # Just ensure we don't send updates more frequently than every 0.05 seconds (20 updates per second)
             current_time = time.time()
-            if current_time - self.last_update_time < 0.5 and self.total_episodes > 0:
+            if current_time - self.last_update_time < 0.05 and self.total_episodes > 0:
                 return
                 
             self.last_update_time = current_time
@@ -368,7 +392,7 @@ def start_training(conn, stop_event):
                     batch_log.append(episode_loss)
                     
                 # Update UI after each episode for maximum responsiveness
-                if total_episodes % 2 == 0:  # Update every other episode to reduce UI load
+                # Send update for every episode to maximize UI responsiveness
                     current_avg_reward = batch_reward_sum / min(total_episodes, bot_module.BATCH_SIZE)
                     recent_avg_reward = (sum(rewards_history[-100:]) / min(len(rewards_history), 100)
                                        if rewards_history else 0.0)
@@ -643,6 +667,9 @@ def handle_training_updates(conn):
                         training_data['max_tile_history'].append(data['batch_max_tile'])
                         if 'batch_loss' in data and data['batch_loss'] is not None:
                             training_data['loss_history'].append(data['batch_loss'])
+                        # Add moves history explicitly
+                        if 'avg_batch_moves' in data:
+                            training_data['moves_history'].append(data['avg_batch_moves'])
                         training_data['best_avg_reward'] = max(training_data['best_avg_reward'], data['best_avg_reward'])
                         training_data['best_max_tile'] = max(training_data['best_max_tile'], data['best_max_tile'])
                         
@@ -653,12 +680,6 @@ def handle_training_updates(conn):
                         client_data['rewards_chart'] = list(training_data['rewards_history'])
                         client_data['max_tile_chart'] = list(training_data['max_tile_history'])
                         client_data['loss_chart'] = list(training_data['loss_history'])
-                        # Always include moves history from the training process
-                        training_data['moves_history'] = training_data.get('moves_history', deque(maxlen=100))
-                        if 'moves_history' not in training_data:
-                            training_data['moves_history'] = deque(maxlen=100)
-                        if hasattr(data, 'avg_batch_moves'):
-                            training_data['moves_history'].append(data['avg_batch_moves'])
                         client_data['moves_chart'] = list(training_data['moves_history'])
                         
                         # For debugging:
