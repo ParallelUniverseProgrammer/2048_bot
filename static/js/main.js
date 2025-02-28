@@ -1299,6 +1299,7 @@ function loadCheckpointsList() {
 function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
     // Update the active checkpoint path
     activeCheckpointPath = checkpointPath;
+    debugCheckpoint(`Loading checkpoint info for: ${checkpointPath}`);
     
     // Show loading state
     checkpointStatusLoading.classList.remove('hidden');
@@ -1312,13 +1313,35 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
     }
     checkpointLoadingTimeout = ensureCheckpointLoadingComplete();
     
+    // Create a timeout to abort the fetch if it takes too long
+    const fetchTimeoutPromise = new Promise((resolve, reject) => {
+        setTimeout(() => {
+            reject(new Error("Checkpoint info fetch timed out after 4 seconds"));
+        }, 4000);
+    });
+    
     // First, load the list of checkpoints to populate the dropdown
     loadCheckpointsList()
-        .then(() => {
-            // Now fetch details about the selected checkpoint
-            return fetch(`/checkpoint_info?path=${encodeURIComponent(checkpointPath)}`);
+        .then(checkpoints => {
+            debugCheckpoint(`Found ${checkpoints.length} checkpoints in list`);
+            
+            // If we got checkpoints but the requested one isn't in the list, use the first one
+            if (checkpoints.length > 0 && !checkpoints.find(c => c.path === checkpointPath)) {
+                checkpointPath = checkpoints[0].path;
+                activeCheckpointPath = checkpointPath;
+                debugCheckpoint(`Switched to available checkpoint: ${checkpointPath}`);
+            }
+            
+            // Now fetch details about the selected checkpoint, with a timeout
+            return Promise.race([
+                fetch(`/checkpoint_info?path=${encodeURIComponent(checkpointPath)}`),
+                fetchTimeoutPromise
+            ]);
         })
-        .then(response => response.json())
+        .then(response => {
+            debugCheckpoint(`Received server response for checkpoint info`);
+            return response.json();
+        })
         .then(data => {
             // Hide loading state
             checkpointStatusLoading.classList.add('hidden');
@@ -1330,6 +1353,7 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
             }
             
             if (!data.exists) {
+                debugCheckpoint(`Server reports checkpoint doesn't exist: ${checkpointPath}`);
                 // Show empty state
                 checkpointStatusEmpty.classList.remove('hidden');
                 // Clear any existing interval if checkpoint doesn't exist
@@ -1342,6 +1366,7 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
             
             // Store checkpoint timestamp for age calculation
             checkpointTimestamp = data.timestamp;
+            debugCheckpoint(`Successfully loaded checkpoint info: ${data.filename}`);
             
             // Update checkpoint info
             checkpointCreated.textContent = data.created;
@@ -1367,6 +1392,8 @@ function loadCheckpointInfo(checkpointPath = activeCheckpointPath) {
         })
         .catch(error => {
             console.error('Error fetching checkpoint info:', error);
+            debugCheckpoint(`Error loading checkpoint info: ${error.message}`);
+            
             // Show error state
             checkpointStatusLoading.classList.add('hidden');
             checkpointErrorMessage.textContent = 'Error loading checkpoint information';
@@ -1411,6 +1438,11 @@ function formatDuration(seconds) {
         const hours = Math.floor((seconds % 86400) / 3600);
         return `${days} day${days !== 1 ? 's' : ''} ${hours} hour${hours !== 1 ? 's' : ''}`;
     }
+}
+
+// Debug helper function
+function debugCheckpoint(message) {
+    console.log(`[Checkpoint Debug] ${message}`);
 }
 
 // Initialize and handle confirmation dialog
@@ -1553,6 +1585,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle refresh checkpoints button
     document.getElementById('refresh-checkpoints').addEventListener('click', function() {
+        debugCheckpoint("Manual checkpoint refresh requested");
+        
         // First, show a debug message in the loading section
         checkpointStatusLoading.innerHTML = `
             <div class="loading-spinner"></div>
@@ -1573,12 +1607,24 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Get the current path if available, otherwise use default
         const currentPath = document.getElementById('checkpoint-select').value || "2048_model.pt";
+        debugCheckpoint(`Current checkpoint path: ${currentPath}`);
         
-        // Directly check for checkpoints list first
-        fetch('/list_checkpoints')
+        // Create a timeout to abort the fetch if it takes too long
+        const fetchTimeoutPromise = new Promise((resolve, reject) => {
+            setTimeout(() => {
+                reject(new Error("Checkpoint list fetch timed out after 3 seconds"));
+            }, 3000);
+        });
+        
+        // Directly check for checkpoints list with a timeout
+        Promise.race([
+            fetch('/list_checkpoints'),
+            fetchTimeoutPromise
+        ])
             .then(response => response.json())
             .then(data => {
                 const checkpoints = data.checkpoints || [];
+                debugCheckpoint(`Refresh found ${checkpoints.length} checkpoints`);
                 
                 if (checkpoints.length === 0) {
                     // No checkpoints found - show empty state
@@ -1594,17 +1640,66 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 // Checkpoints exist, use the current path or first checkpoint
-                const pathToUse = checkpoints.find(c => c.path === currentPath) ? 
-                    currentPath : checkpoints[0].path;
+                let pathToUse = checkpoints[0].path;
+                if (checkpoints.find(c => c.path === currentPath)) {
+                    pathToUse = currentPath;
+                    debugCheckpoint(`Using current path: ${pathToUse}`);
+                } else {
+                    debugCheckpoint(`Current path not found, using first available: ${pathToUse}`);
+                }
+                
+                // Update the checkpoint select if it exists
+                const selectElement = document.getElementById('checkpoint-select');
+                if (selectElement) {
+                    // Clear existing options
+                    selectElement.innerHTML = '';
+                    
+                    // Add options for each checkpoint
+                    checkpoints.forEach(checkpoint => {
+                        const option = document.createElement('option');
+                        option.value = checkpoint.path;
+                        
+                        let displayName = checkpoint.filename;
+                        if (checkpoint.is_current) {
+                            displayName = 'Current: ' + displayName;
+                        } else {
+                            const match = checkpoint.filename.match(/2048_model_(\d{8})_(\d{6})\.pt/);
+                            if (match) {
+                                const date = match[1];
+                                const time = match[2];
+                                const formattedDate = `${date.substring(0, 4)}-${date.substring(4, 6)}-${date.substring(6, 8)}`;
+                                const formattedTime = `${time.substring(0, 2)}:${time.substring(2, 4)}:${time.substring(4, 6)}`;
+                                displayName = `${formattedDate} ${formattedTime}`;
+                            }
+                        }
+                        
+                        option.textContent = displayName;
+                        selectElement.appendChild(option);
+                    });
+                    
+                    // Set the selected value
+                    selectElement.value = pathToUse;
+                }
                 
                 // Continue with checkpoint info
                 loadCheckpointInfo(pathToUse);
             })
             .catch(error => {
                 console.error("Error refreshing checkpoints:", error);
+                debugCheckpoint(`Error refreshing checkpoint list: ${error.message}`);
+                
                 checkpointStatusLoading.classList.add('hidden');
                 checkpointErrorMessage.textContent = 'Error refreshing checkpoint list';
                 checkpointStatusError.classList.remove('hidden');
+                
+                // Still attempt to load with the default path as a fallback
+                if (currentPath && currentPath !== "undefined") {
+                    debugCheckpoint(`Attempting fallback load with path: ${currentPath}`);
+                    setTimeout(() => loadCheckpointInfo(currentPath), 500);
+                } else {
+                    debugCheckpoint(`Falling back to default model path`);
+                    setTimeout(() => loadCheckpointInfo("2048_model.pt"), 500);
+                }
                 
                 // Clear the loading timeout since we reached an error state
                 if (checkpointLoadingTimeout) {
@@ -1649,21 +1744,49 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleSection(hardwarePanel, toggleHardware);
     
     // Immediately check if we have checkpoints (no need to wait for panel toggle)
-    fetch('/list_checkpoints')
+    // Create a timeout to abort the fetch if it takes too long
+    const initialFetchTimeoutPromise = new Promise((resolve, reject) => {
+        setTimeout(() => {
+            reject(new Error("Initial checkpoint list fetch timed out after 3 seconds"));
+        }, 3000);
+    });
+    
+    Promise.race([
+        fetch('/list_checkpoints'),
+        initialFetchTimeoutPromise
+    ])
         .then(response => response.json())
         .then(data => {
             const checkpoints = data.checkpoints || [];
             
             if (checkpoints.length === 0) {
                 // No checkpoints - make sure empty state is ready
-                console.log("No checkpoints available on initial load");
+                debugCheckpoint("No checkpoints available on initial load");
                 // Don't change UI state here, just prepare for when panel is opened
             } else {
-                console.log(`Found ${checkpoints.length} checkpoints on initial load`);
+                debugCheckpoint(`Found ${checkpoints.length} checkpoints on initial load`);
+                
+                // Pre-load the first checkpoint's info in the background
+                // This ensures metadata is ready when user clicks on checkpoints panel
+                setTimeout(() => {
+                    debugCheckpoint("Preloading first checkpoint info in background");
+                    const firstCheckpointPath = checkpoints[0].path;
+                    
+                    // Use a silent fetch that doesn't affect UI state
+                    fetch(`/checkpoint_info?path=${encodeURIComponent(firstCheckpointPath)}`)
+                        .then(response => response.json())
+                        .then(info => {
+                            debugCheckpoint(`Successfully preloaded checkpoint info: ${info.filename || "unknown"}`);
+                        })
+                        .catch(error => {
+                            debugCheckpoint(`Error preloading checkpoint info: ${error.message}`);
+                        });
+                }, 1000); // Delay by 1 second to let UI initialize first
             }
         })
         .catch(error => {
             console.error("Error checking for checkpoints on load:", error);
+            debugCheckpoint(`Error checking for checkpoints on initial load: ${error.message}`);
         });
     
     // Add delete checkpoint event listener

@@ -138,8 +138,12 @@ def checkpoint_info():
         # Get path parameter, default to current model
         checkpoint_path = request.args.get('path', "2048_model.pt")
         
+        # Debug output to help with troubleshooting
+        print(f"Checkpoint info requested for: {checkpoint_path}")
+        
         # Check if model checkpoint exists
         if not os.path.exists(checkpoint_path):
+            print(f"Checkpoint file not found at path: {checkpoint_path}")
             return jsonify({"exists": False, "message": f"Checkpoint {checkpoint_path} not found"})
         
         # Get checkpoint file stats
@@ -169,18 +173,67 @@ def checkpoint_info():
         best_reward = "Unknown"
         best_tile = "Unknown"
         
+        # Create a simple response without loading the model first
+        basic_info = {
+            "exists": True,
+            "created": created_str,
+            "age": age_str,
+            "size": size_str,
+            "training_time": training_time,
+            "episodes": episodes,
+            "best_reward": best_reward,
+            "best_tile": best_tile,
+            "filename": os.path.basename(checkpoint_path),
+            "path": checkpoint_path,
+            "timestamp": created_time,
+            "current_time": current_time
+        }
+        
+        # Try to load model metadata, but don't let it prevent basic info from returning
         try:
             # Load the checkpoint to get metadata
+            print(f"Loading checkpoint metadata from {checkpoint_path}")
+            
             if torch.cuda.is_available():
                 device = torch.device("cuda")
             else:
                 device = torch.device("cpu")
                 
-            checkpoint = torch.load(checkpoint_path, map_location=device)
+            # Use a timeout mechanism to prevent hanging
+            def load_checkpoint():
+                return torch.load(checkpoint_path, map_location=device)
+            
+            # Create a thread to load the checkpoint with timeout protection
+            import threading
+            checkpoint_data = None
+            load_error = None
+            
+            def load_with_timeout():
+                nonlocal checkpoint_data, load_error
+                try:
+                    checkpoint_data = load_checkpoint()
+                except Exception as e:
+                    load_error = str(e)
+            
+            load_thread = threading.Thread(target=load_with_timeout)
+            load_thread.daemon = True
+            load_thread.start()
+            load_thread.join(timeout=2.0)  # Wait maximum 2 seconds
+            
+            if load_thread.is_alive():
+                print("Checkpoint loading timed out")
+                return jsonify(basic_info)
+            
+            if load_error:
+                print(f"Error loading checkpoint data: {load_error}")
+                return jsonify(basic_info)
+            
+            checkpoint = checkpoint_data
             
             # Check if checkpoint has metadata
             if isinstance(checkpoint, dict) and "metadata" in checkpoint:
                 metadata = checkpoint["metadata"]
+                print("Successfully loaded checkpoint metadata")
                 
                 # Extract training duration if available
                 if "training_duration" in metadata:
@@ -197,24 +250,22 @@ def checkpoint_info():
                     
                 if "best_max_tile" in metadata:
                     best_tile = str(metadata["best_max_tile"])
+                    
+                # Update the basic info with the metadata
+                basic_info.update({
+                    "training_time": training_time,
+                    "episodes": episodes,
+                    "best_reward": best_reward,
+                    "best_tile": best_tile
+                })
+            else:
+                print("Checkpoint loaded but no metadata found or invalid format")
+                
         except Exception as e:
             print(f"Error extracting metadata from checkpoint: {e}")
-            # Continue with default "Unknown" values if metadata extraction fails
+            # Continue with basic info if metadata extraction fails
         
-        return jsonify({
-            "exists": True,
-            "created": created_str,
-            "age": age_str,
-            "size": size_str,
-            "training_time": training_time,
-            "episodes": episodes,
-            "best_reward": best_reward,
-            "best_tile": best_tile,
-            "filename": os.path.basename(checkpoint_path),
-            "path": checkpoint_path,
-            "timestamp": created_time,
-            "current_time": current_time  # Add current time for client-side time calculations
-        })
+        return jsonify(basic_info)
     except Exception as e:
         print(f"Error getting checkpoint info: {e}")
         return jsonify({"exists": False, "message": f"Error: {str(e)}"})
