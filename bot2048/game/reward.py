@@ -193,7 +193,7 @@ def compute_strategy_diversity_bonus(game_board, previous_boards):
         return 0.0
     
     # Look at the last few boards to see what strategies were used
-    recent_boards = previous_boards[-3:]
+    recent_boards = list(previous_boards)[-3:]
     recent_strategies = [identify_board_strategy(b)[0] for b in recent_boards]
     
     # If current strategy is different from the majority of recent strategies
