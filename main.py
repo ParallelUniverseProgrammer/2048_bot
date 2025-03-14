@@ -25,9 +25,9 @@ import sys
 import argparse
 sys.path.append('.')  # Add current directory to path
 
-from 2048_bot.ui.web import run_server
-from 2048_bot.ui.console import run_console_ui
-from 2048_bot.utils import config
+from bot2048.ui.web import run_server
+from bot2048.ui.console import run_console_ui
+from bot2048.utils import config
 
 def main():
     parser = argparse.ArgumentParser(description="2048 Bot - Reinforcement Learning Agent")
