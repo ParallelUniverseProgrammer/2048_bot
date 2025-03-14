@@ -60,8 +60,9 @@ def simulate_episode(agent, device, total_episodes=0, chunk_size=16):
         
         # Process the board state and get action probabilities
         state = model.board_to_tensor(game_board, device)
-        with torch.no_grad():
-            logits = agent(state).squeeze(0)
+        
+        # Get model predictions - retain computation graph for training
+        logits = agent(state).squeeze(0)
             
         # Create validity mask
         mask = torch.full((4,), -float('inf'), device=device)
